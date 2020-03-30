@@ -1,0 +1,20 @@
+name: CI
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  test:
+    # The type of runner that the job will run on
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+
+    - name: All Tests
+      run: |
+        docker build -t aposteriori .
+        docker run sposteriori:latest pytest
