@@ -14,8 +14,11 @@ from tensorflow.keras.layers import (
 from tensorflow.keras.models import Model
 from tensorflow.keras import Sequential
 
+from src.aposteriori.dnn.config import ACTIVATION_FUNC
+
+
 def create_frame_2d7_model(input_shape):
-    
+
     model = Sequential(
     [Conv3D(128, 4, 1,
          padding='same', kernel_initializer='he_normal', use_bias=False,
@@ -25,14 +28,14 @@ def create_frame_2d7_model(input_shape):
      Activation("elu"),
      MaxPooling3D(3, 2, padding='same'),
      SpatialDropout3D(0.5),
-     
+
      Conv3D(256, 3, 1,
          padding='same', kernel_initializer='he_normal', use_bias=False,
      ),
      BatchNormalization(),
      Activation("elu"),
      MaxPooling3D(3, 2, padding='same'),
-     
+
      Conv3D(348, 2, 1,
          padding='same', kernel_initializer='he_normal', use_bias=False,
      ),
@@ -48,21 +51,18 @@ def create_frame_2d7_model(input_shape):
      ),
      BatchNormalization(),
      Activation("elu"),
-     
+
      Conv3D(20, 1, 1,
          padding='same', kernel_initializer='he_normal', use_bias=False,
      ),
      BatchNormalization(),
      Activation("elu"),
      SpatialDropout3D(0.5),
-     
+
      GlobalAveragePooling3D(),
      Activation("softmax"),
     ])
     return model
-
-
-from config import ACTIVATION_FUNC
 
 
 def create_frame_cnn_model(input_shape):

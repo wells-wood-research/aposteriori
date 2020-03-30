@@ -3,19 +3,20 @@ import sys
 
 from tensorflow.keras.utils import plot_model
 
-from analysis.callbacks import (
+from src.aposteriori.dnn.analysis.callbacks import (
     FrameConfusionPlotter,
     top_3_cat_acc,
     csv_logger,
     checkpoint,
     create_tb_callback,
 )
-from config import *
-from data_processing.encoder import encode_data
-from data_processing.discretization import FrameDiscretizedProteinsSequence
-from network.frame_model import create_frame_cnn_model
-from network.visualization.frame import visualize_model_layer
-from network.visualization.prediction_entropy import visualize_model_entropy
+
+from src.aposteriori.dnn.config import *
+from src.aposteriori.dnn.data_processing.encoder import encode_data
+from src.aposteriori.dnn.data_processing.discretization import FrameDiscretizedProteinsSequence
+from src.aposteriori.dnn.network.frame_model import create_frame_cnn_model
+from src.aposteriori.dnn.network.visualization.frame import visualize_model_layer
+from src.aposteriori.dnn.network.visualization.prediction_entropy import visualize_model_entropy
 
 
 def log_uncaught_exceptions(ex_type, ex_value, ex_traceback):

@@ -4,11 +4,11 @@ from pathlib import Path
 import ampal
 from ampal import AmpalContainer
 from ampal.protein import Polypeptide
-import aposteriori.src.aposteriori.create_data_set as cds
+import src.aposteriori.data_prep.create_data_set as cds
 from scipy.stats import entropy
 import tensorflow as tf
 
-from config import (
+from src.aposteriori.dnn.config import (
     ANNOTATED_ENTROPY_PDB_PATH,
     PDB_PATH,
     PDB_CODES,
@@ -20,8 +20,8 @@ from config import (
     H5_STRUCTURES_PATH,
     SAVE_ANNOTATED_PDB_TO_FILE,
 )
-from analysis.callbacks import top_3_cat_acc
-from data_processing.discretization import (
+from src.aposteriori.dnn.analysis.callbacks import top_3_cat_acc
+from src.aposteriori.dnn.data_processing.discretization import (
     make_data_points,
     FrameDiscretizedProteinsSequence,
 )
