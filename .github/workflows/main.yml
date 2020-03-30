@@ -17,4 +17,4 @@ jobs:
     - name: All Tests
       run: |
         docker build -t aposteriori .
-        docker run sposteriori:latest pytest
+        docker run aposteriori:latest pytest
