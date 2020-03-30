@@ -413,5 +413,5 @@ fabric.properties
 
 # .nfs files are created when an open file is removed but is still being accessed
 .nfs*
-src/dnn/model/
-src/dnn/data/
+src/aposteriori/dnn/model/
+src/aposteriori/dnn/data/
