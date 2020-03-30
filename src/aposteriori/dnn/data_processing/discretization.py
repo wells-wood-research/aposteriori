@@ -6,8 +6,8 @@ import tensorflow.keras as keras
 from tensorflow.keras.models import load_model
 from ampal.amino_acids import standard_amino_acids
 
-from src.aposteriori.dnn.data_processing.encoder import encode_data
-from src.aposteriori.dnn.config import UNCOMMON_RESIDUE_DICT, UNCOMMON_RES_CONVERSION
+from aposteriori.dnn.data_processing.encoder import encode_data
+from aposteriori.dnn.config import UNCOMMON_RESIDUE_DICT, UNCOMMON_RES_CONVERSION
 
 
 class FrameDiscretizedProteinsSequence(keras.utils.Sequence):

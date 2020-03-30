@@ -10,10 +10,10 @@ from tensorflow.keras.layers import (
 
 from tensorflow.keras.models import Model, load_model
 from tensorflow.keras import Sequential
-from src.aposteriori.dnn.analysis.callbacks import top_3_cat_acc
+from aposteriori.dnn.analysis.callbacks import top_3_cat_acc
 from tensorflow.keras import utils
 
-from src.aposteriori.dnn.config import FRAME_CONV_MODEL
+from aposteriori.dnn.config import FRAME_CONV_MODEL
 
 
 def create_contig_rnn_model(input_shape):

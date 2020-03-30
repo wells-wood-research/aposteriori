@@ -2,7 +2,7 @@ import pickle
 import numpy as np
 
 from sklearn.preprocessing import OneHotEncoder
-from src.aposteriori.dnn.config import ATOMIC_NUMBERS, ENCODER_PATH
+from aposteriori.dnn.config import ATOMIC_NUMBERS, ENCODER_PATH
 from ampal.amino_acids import standard_amino_acids
 
 # TODO: Refactor order as in PEP8

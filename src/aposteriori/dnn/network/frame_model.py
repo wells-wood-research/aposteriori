@@ -14,7 +14,7 @@ from tensorflow.keras.layers import (
 from tensorflow.keras.models import Model
 from tensorflow.keras import Sequential
 
-from src.aposteriori.dnn.config import ACTIVATION_FUNC
+from aposteriori.dnn.config import ACTIVATION_FUNC
 
 
 def create_frame_2d7_model(input_shape):

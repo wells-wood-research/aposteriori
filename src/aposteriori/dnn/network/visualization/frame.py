@@ -1,4 +1,4 @@
-from src.aposteriori.dnn.config import (
+from aposteriori.dnn.config import (
     ACTIVATION_ALPHA,
     ATOM_COLORS,
     COLOR_MAP,
@@ -7,7 +7,7 @@ from src.aposteriori.dnn.config import (
     LOCAL_COLOR_MAP,
     PLOT_DIR,
 )
-from src.aposteriori.dnn.data_processing.encoder import encode_data
+from aposteriori.dnn.data_processing.encoder import encode_data
 
 import matplotlib.colors as colors
 import matplotlib.pyplot as plt
