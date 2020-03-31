@@ -24,7 +24,6 @@ def create_discrete_structure_v1(pdb_path: Path) -> EncodedStructureT:
         backbone_only=True,
         include_hydrogen=False,
         filter_monomers=("HOH",),
-        gzipped=True,
     )
     assert len(list(d_structure.ca_atoms)) > 0, "No protein CA atoms found."
     indices_labels = [(ca.indices, ca.mol_code) for ca in d_structure.ca_atoms]

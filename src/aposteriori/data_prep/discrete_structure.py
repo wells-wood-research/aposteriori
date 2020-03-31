@@ -57,7 +57,7 @@ class DiscreteAtom:
         cls, atom: ampal.Atom, max_distance: float = 1.0, padding: int = 0
     ):
         """Converts an ampal.Atom to a DiscreteAtom.
-        
+
         Notes
         -----
 
@@ -99,7 +99,7 @@ class DiscreteAtom:
 
 class DiscreteStructure:
     """Creates a discretized protein structure.
-    
+
     Examples
     --------
     You can create a `DiscreteStructure` one of 2 ways: from a file
@@ -113,7 +113,6 @@ class DiscreteStructure:
     >>> d_structure = DiscreteStructure.from_pdb_path(
     ...     Path('tests/testing_files/biounit/mk/1mkk.pdb1.gz'),
     ...     padding=10,
-    ...     gzipped=True,
     ... )
 
     This class method returns a `DiscreteStructure`. With default
@@ -142,7 +141,7 @@ class DiscreteStructure:
 
     >>> d_structure.discrete_atoms[:2]
     [<DiscreteAtom: VAL, N, N>, <DiscreteAtom: VAL, CA, C>]
-    
+
     >>> ca_atom = d_structure.discrete_atoms[1]
     >>> ca_atom.indices
     (68, 81, 47)
@@ -217,24 +216,28 @@ class DiscreteStructure:
         include_hydrogen=False,
         filter_monomers=("HOH",),
         padding=0,
-        gzipped=False,
     ):
         """Creates a DiscreteStructure from a PDB file."""
         pdb_id = pdb_path.stem
-        if gzipped:
+        file_extension = pdb_path.suffix
+        assert (file_extension == '.gz') or (file_extension == '.pdb'), (
+            f"Supported formats are .gz or .pdb but got {file_extension}"
+        )
+        if file_extension == '.gz':
             with gzip.open(pdb_path) as inf:
                 structure = ampal.load_pdb(
                     inf.read().decode(), pdb_id=pdb_id, path=False
                 )
-        else:
+        elif file_extension == '.pdb':
             with open(pdb_path) as inf:
                 structure = ampal.load_pdb(inf.read(), pdb_id=pdb_id, path=False)
-        assert isinstance(
-            structure, ampal.AmpalContainer
-        ), "Structure should be an AMPAL container."
-        assembly = structure[0]
-        assembly.translate(_create_min_vector(assembly))
 
+        if isinstance(structure, ampal.AmpalContainer):
+            assembly = structure[0]
+            assembly.translate(_create_min_vector(assembly))
+        elif isinstance(structure, ampal.Assembly):
+            assembly = structure
+            assembly.translate(_create_min_vector(assembly))
         # if you're confused by this closure, it is used as the filter function as
         # a lambda is a bit long
         def is_included_atom(atom):
