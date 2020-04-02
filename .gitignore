@@ -419,3 +419,5 @@ src/aposteriori/dnn/data/
 
 # Vim
 .vim/
+
+prototype/
