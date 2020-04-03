@@ -505,3 +505,103 @@ def make_data_points(
             random.shuffle(data_points)
 
     return data_points
+
+
+def calculate_voxel_density(voxel_coords, atom_coords, wanderwaal_radius):
+    """
+    Calculate densities in voxels using the wanderwaal radius.
+
+    :param voxel_coords: Tuple of int
+        Coordinates of the current voxel. (y, x, z)
+    :param atom_coords: Tuple of int
+        Coordinates of the atom. (y, x, z)
+    :param wanderwaal_radius: float
+        Wanderwaal's radius of the current atom.
+
+    :return: density: Float
+        Density of the voxel.
+
+    """
+    b, a, c = voxel_coords
+    y, x, z = atom_coords
+
+    relative_distance_squared = np.sum(
+        [
+            np.square(np.subtract(a, x)),
+            np.square(np.subtract(b, y)),
+            np.square(np.subtract(c, z)),
+        ]
+    )
+    # if the atom is present at the current space don't add densities
+    if not relative_distance_squared:
+        return float(0)
+
+    density = np.exp(
+        -1 * np.divide(relative_distance_squared, np.square(wanderwaal_radius))
+    )
+    return density
+
+
+def create_gaussian_density_from_voxel(frame_voxels, wanderwaal_radii):
+    """
+    Creates a gaussian representation of atoms densities based on the Wander
+    Waal's
+    radius.
+
+    :param frame_voxels: Array of floats
+        The frame of voxels. The shape of the frame is (y, x, z, atoms)
+    :param wanderwaal_radii: Array of Floats
+        Array of radii in the order [empty_space, Carbon, Nitrogen, Oxygen,
+        Sulphur]
+    :return:
+    """
+
+    density_frame = np.zeros(frame_voxels.shape)
+    # Extract atom coordinates from frame voxels
+    for atom_idx in range(len(frame_voxels[0, 0, 0, :])):
+        atoms_coords = np.array(frame_voxels[:, :, :, atom_idx].nonzero()).T
+        # np.nonzero() returns a tuple of all the coordinates such that:
+        # ([ y1, y2],
+        #  [ x1, x2],
+        #  [ z1, z2])
+        # Transposing an array gives:
+        # [[y1, x1, z1], [y1, x1, z1]]
+
+        # Extract atom wanderwaal's radius
+        atom_wanderwaal = wanderwaal_radii[atom_idx]
+
+        # Extract all the points for the atom:
+        for atom_coord in atoms_coords:
+            # Create empty frame for the current atom coordinate:
+            empty_frame_voxels = np.zeros(
+                (density_frame[:, :, :, atom_idx].shape))
+
+            # Set atom coordinate to maximum density:
+            empty_frame_voxels[atom_coord[0]][atom_coord[1]][atom_coord[2]] = 1
+
+            # Modify the densities in y, x, z axis:
+            for y in range(
+                    len(empty_frame_voxels[max(atom_coord[0] - 26, 0): 26])):
+                for x in range(
+                        len(empty_frame_voxels[y][
+                            max(atom_coord[1] - 26, 0): 26])
+                ):
+                    for z in range(
+                            len(empty_frame_voxels[y][x][
+                                max(atom_coord[2] - 26, 0): 26])
+                    ):
+                        density = calculate_voxel_density(
+                            (y, x, z), atom_coord, atom_wanderwaal
+                        )
+                        # Add to the existing density:
+                        empty_frame_voxels[y][x][z] += density
+
+            # Normalize densities by sum of all densities:
+            frame_normalized_densities = np.divide(
+                empty_frame_voxels, np.sum(empty_frame_voxels)
+            )
+
+            # Add to original array:
+            density_frame[:, :, :, atom_idx] += frame_normalized_densities
+
+    return density_frame
