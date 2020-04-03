@@ -6,12 +6,12 @@ authors = ["Wells Wood Lab, University of Edinburgh"]
 license = "MIT"
 
 [tool.poetry.dependencies]
-python = "^3.7"
+python = "~3.7"
 ampal = "^1.4.0"
 numpy = "^1.18.2"
 scikit-learn = "^0.22.2"
 matplotlib = "^3.2.1"
-tensorflow = "1.14.0"
+tensorflow = "~1.14"
 mypy = "^0.770"
 
 [tool.poetry.dev-dependencies]
