@@ -14,7 +14,7 @@ class TestEncodedCreateDataSet:
     elements_by_atomic_num = {
         v["atomic number"]: k for k, v in ampal.data.ELEMENT_DATA.items()
     }
-    d_structure = DiscreteStructure.from_pdb_path(pdb_path, padding=0, gzipped=True)
+    d_structure = DiscreteStructure.from_pdb_path(pdb_path, padding=0)
     pdb_code, data, indices, labels = create_discrete_structure_v1(pdb_path)
 
     def test_fail_to_create(self):

@@ -19,7 +19,6 @@ class TestDiscreteStructure:
         padding=10,
         backbone_only=False,
         include_hydrogen=True,
-        gzipped=True,
         filter_monomers=[],
     )
 
