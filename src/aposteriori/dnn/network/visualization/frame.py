@@ -263,3 +263,34 @@ def visualize_model_layer(
             f"Unsupported Type {type(frame_index)}, supported types are "
             f"integers or list of integers"
         )
+
+
+def visualize_frame_of_voxels(frame_voxels):
+    """
+    Produces a plot of the voxels in a frame. Used mostly for debugging
+    purposes.
+
+    :param frame_voxels: Array of floats
+        The frame of voxels. The shape of the frame is (y, x, z, atoms)
+    """
+
+    for atom_idx in range(len(frame_voxels[0, 0, 0, :])):
+        x = []
+        y = []
+        z = []
+        w = []
+        # Extract x y z and density values:
+        for ix, yzs in enumerate(frame_voxels[:, :, :, atom_idx]):
+            for iy, zs in enumerate(yzs):
+                for iz, a in enumerate(zs):
+                    x.append(ix)
+                    y.append(iy)
+                    z.append(iz)
+                    w.append(a)
+        norm = colors.Normalize(vmin=min(w), vmax=max(w))
+        fig = plt.figure()
+        ax = fig.add_subplot(121, projection="3d")
+        ax.scatter(
+            x, y, z, zdir="z", alpha=0.4, color=COLOR_MAP(norm(w)), depthshade=False,
+        )
+        plt.show()
