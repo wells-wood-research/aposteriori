@@ -49,15 +49,15 @@ if __name__ == '__main__':
     # Discretize Structures:
     TRAINING_SET = FrameDiscretizedProteinsSequence(
         data_set_path=PIECES_DATA_PATH, data_points=TRAINING_DATA[0:200],
-        radius=RADIUS, batch_size=BATCH_SIZE, shuffle=SHUFFLE
+        radius=RADIUS, batch_size=BATCH_SIZE, shuffle=SHUFFLE, frame_as_gaussian=FRAME_AS_GAUSSIAN
     )
     VALIDATION_SET = FrameDiscretizedProteinsSequence(
         data_set_path=PIECES_DATA_PATH, data_points=VALIDATION_DATA[0:200],
         radius=RADIUS, batch_size=BATCH_SIZE, shuffle=SHUFFLE
     )
     logger.info(f'Training Set: {len(TRAINING_SET)}, Validation Set: {len(VALIDATION_SET)}')
-    assert all(tuple(x[(RADIUS, RADIUS, RADIUS)]) == tuple([0, 1, 0, 0, 0]) for x in TRAINING_SET[0][0])
-    assert all(tuple(x[(RADIUS, RADIUS, RADIUS)]) == tuple([0, 1, 0, 0, 0]) for x in TRAINING_SET[0][0])
+    # assert all(tuple(x[(RADIUS, RADIUS, RADIUS)]) == tuple([0, 1, 0, 0, 0]) for x in TRAINING_SET[0][0])
+    # assert all(tuple(x[(RADIUS, RADIUS, RADIUS)]) == tuple([0, 1, 0, 0, 0]) for x in TRAINING_SET[0][0])
 
     # Define Model:
     tensorflow.keras.utils.get_custom_objects()['top_3_cat_acc'] = top_3_cat_acc
