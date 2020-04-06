@@ -52,15 +52,29 @@ def align_to_residue_plane(residue: ampal.Residue):
 
 def within_frame(radius: float, atom: ampal.Atom) -> bool:
     """Tests if an atom is within the `radius` of the origin."""
-    return all([0 <= v <= 2 * radius for v in atom.array])
+    return all([0 <= abs(v) <= radius for v in atom.array])
 
 
-def discretize(atom: ampal.Atom, voxel_edge_length: float) -> t.Tuple[int, int, int]:
-    """Rounds and then converts to an integer."""
+def discretize(
+    atom: ampal.Atom, voxel_edge_length: float, adjust_by: int = 0
+) -> t.Tuple[int, int, int]:
+    """Rounds and then converts to an integer.
+
+    Parameters
+    ----------
+    atom : ampal.Atom
+        Atom x, y, z coordinates will be discretized based on `voxel_edge_length`.
+    voxel_edge_length : float
+        Edge length of the voxels that are mapped onto cartesian space.
+    adjust_by : int
+    """
+
+    # I'm explicitly repeating this operation to make it explicit to the type checker
+    # that a triple is returned.
     return (
-        int(atom.x // voxel_edge_length),
-        int(atom.y // voxel_edge_length),
-        int(atom.z // voxel_edge_length),
+        int(np.round(atom.x / voxel_edge_length)) + adjust_by,
+        int(np.round(atom.y / voxel_edge_length)) + adjust_by,
+        int(np.round(atom.z / voxel_edge_length)) + adjust_by,
     )
 
 
@@ -79,7 +93,7 @@ def create_residue_frame(
         The residue to be converted to a frame.
     radius : float
         This term is slightly confusing as it's not really the radius as the frame is
-        a cube. It is helf the edge length of the frame.
+        a cube. It is half the edge length of the frame.
     voxels_per_side : int
         The number of voxels per edge that the cube of space will be converted into i.e.
         the final cube will be `voxels_per_side`^3. This must be a odd, positive integer
@@ -88,7 +102,8 @@ def create_residue_frame(
     Returns
     -------
     unique_key : str
-        A unique identifier for the residue e.g.`3qy1:A:3:ASP` (pdb_code:chain:residue number:res code)
+        A unique identifier for the residue e.g.`3qy1:A:3:ASP`
+        (pdb_code:chain:residue number:res code)
     
     Raises
     ------
@@ -106,8 +121,6 @@ def create_residue_frame(
     chain = residue.parent
 
     align_to_residue_plane(residue)
-    # after the alignment, the assembly is translated so that the cube has positive xyz
-    assembly.translate((radius, radius, radius))
     # create an empty array for discreet frame
     frame = np.zeros(
         (voxels_per_side, voxels_per_side, voxels_per_side), dtype=np.uint8
@@ -118,7 +131,7 @@ def create_residue_frame(
         a for a in assembly.get_atoms(ligands=False) if within_frame(radius, a)
     ):
         # 3d coordinates are converted to relative indices in frame array
-        indices = discretize(atom, voxel_edge_length)
+        indices = discretize(atom, voxel_edge_length, adjust_by=voxels_per_side // 2)
         ass = atom.parent.parent.parent
         cha = atom.parent.parent
         res = atom.parent
