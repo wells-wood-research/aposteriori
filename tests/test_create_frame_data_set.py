@@ -5,7 +5,7 @@ import copy
 import aposteriori.data_prep.create_frame_data_set as cfds
 import ampal
 import ampal.geometry as g
-from hypothesis import given
+from hypothesis import given, settings
 from hypothesis.strategies import integers
 import numpy as np
 import pytest
@@ -13,6 +13,7 @@ import pytest
 TEST_DATA_DIR = Path("tests/testing_files/pdb_files/")
 
 
+@settings(deadline=400)
 @given(integers(min_value=0, max_value=214))
 def test_create_residue_frame(residue_number):
     assembly = ampal.load_pdb(str(TEST_DATA_DIR / "3qy1.pdb"))
