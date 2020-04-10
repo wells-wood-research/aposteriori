@@ -4,11 +4,18 @@ In this type of data set, all individual entries are stored separately in a flat
 structure.
 """
 
+import glob
+import pathlib
 import typing as t
 
 import ampal
 import ampal.geometry as geometry
+import click
+import h5py
 import numpy as np
+
+
+StrOrPath = t.Union[str, pathlib.Path]
 
 
 def align_to_residue_plane(residue: ampal.Residue):
@@ -50,9 +57,10 @@ def align_to_residue_plane(residue: ampal.Residue):
     return
 
 
-def within_frame(radius: float, atom: ampal.Atom) -> bool:
+def within_frame(frame_edge_length: float, atom: ampal.Atom) -> bool:
     """Tests if an atom is within the `radius` of the origin."""
-    return all([0 <= abs(v) <= radius for v in atom.array])
+    half_frame_edge_length = frame_edge_length / 2
+    return all([0 <= abs(v) <= half_frame_edge_length for v in atom.array])
 
 
 def discretize(
@@ -79,8 +87,8 @@ def discretize(
 
 
 def create_residue_frame(
-    residue: ampal.Residue, radius: float, voxels_per_side: int
-) -> t.Tuple[str, np.ndarray]:
+    residue: ampal.Residue, frame_edge_length: float, voxels_per_side: int,
+) -> np.ndarray:
     """Creates a discreet representation of a volume of space around a residue.
     
     Notes
@@ -91,9 +99,8 @@ def create_residue_frame(
     ----------
     residue : ampal.Residue
         The residue to be converted to a frame.
-    radius : float
-        This term is slightly confusing as it's not really the radius as the frame is
-        a cube. It is half the edge length of the frame.
+    frame_edge_length : float
+        The length of the edges of the frame.
     voxels_per_side : int
         The number of voxels per edge that the cube of space will be converted into i.e.
         the final cube will be `voxels_per_side`^3. This must be a odd, positive integer
@@ -101,9 +108,9 @@ def create_residue_frame(
     
     Returns
     -------
-    unique_key : str
-        A unique identifier for the residue e.g.`3qy1:A:3:ASP`
-        (pdb_code:chain:residue number:res code)
+    frame : ndarray
+        Numpy array containing the discreet representation of a cube of space around the
+        residue.
     
     Raises
     ------
@@ -116,7 +123,7 @@ def create_residue_frame(
         * If the central voxel in the frame is not carbon as it should the the CA atom
     """
     assert voxels_per_side % 2, "The number of voxels per side should be odd."
-    voxel_edge_length = (2 * radius) / voxels_per_side
+    voxel_edge_length = frame_edge_length / voxels_per_side
     assembly = residue.parent.parent
     chain = residue.parent
 
@@ -128,7 +135,9 @@ def create_residue_frame(
     frame.fill(0)
     # iterate through all atoms within the frame
     for atom in (
-        a for a in assembly.get_atoms(ligands=False) if within_frame(radius, a)
+        a
+        for a in assembly.get_atoms(ligands=False)
+        if within_frame(frame_edge_length, a)
     ):
         # 3d coordinates are converted to relative indices in frame array
         indices = discretize(atom, voxel_edge_length, adjust_by=voxels_per_side // 2)
@@ -154,37 +163,171 @@ def create_residue_frame(
     assert (
         frame[centre, centre, centre] == 6
     ), f"The central atom should be carbon, but it is {frame[centre, centre, centre]}."
-    unique_key = f"{assembly.id}:{chain.id}:{residue.id}:{residue.mol_code}"
-    return (unique_key, frame)
+    return frame
 
 
-def create_frames(
-    polypeptide: ampal.Polypeptide, radius: float, voxels_per_side: int
-) -> t.Dict[str, np.ndarray]:
-    """Creates all discretized frames for all residues in the input polypeptide.
-    
+def default_atom_filter(atom: ampal.Atom) -> bool:
+    """Filters for all heavy protein backbone atoms."""
+    backbone_atoms = ("N", "CA", "C", "O")
+    if atom.element == "H":
+        return False
+    elif isinstance(atom.parent, ampal.Residue) and (atom.res_label in backbone_atoms):
+        return True
+    else:
+        return False
+
+
+def make_dataset(
+    structure_files: t.Iterable[StrOrPath],
+    output_folder: StrOrPath,
+    frame_edge_length: float,
+    voxels_per_side: int,
+    atom_filter_fn: t.Callable[[ampal.Atom], bool] = default_atom_filter,
+    verbosity: int = 1,
+) -> pathlib.Path:
+    """Creates a data set of voxelized amino acid frames.
+
     Parameters
     ----------
-    polypeptide : ampal.Polypeptide
-        Frames will be created for all residues in this polypeptide.
-    radius : float
-        This term is slightly confusing as it's not really the radius as the frame is
-        a cube. It is helf the edge length of the frame.
+    structure_files : List[str or pathlib.Path]
+        List of paths to pdb files to be processed into frames
+    frame_edge_length : float
+        The length of the edges of the frame.
     voxels_per_side : int
         The number of voxels per edge that the cube of space will be converted into i.e.
         the final cube will be `voxels_per_side`^3. This must be a odd, positive integer
         so that the CA atom can be placed at the centre of the frame.
-    
+    atom_filter_fn : ampal.Atom -> bool
+        A function used to preprocess structures to remove atoms that are not to be
+        included in the final structure. By default water and side chain atoms will be
+        removed.
+    verbosity : int
+        Level of logging sent to std out.
+
     Returns
     -------
-    frames : Dict[str, np.ndarray]
-        
+    output_file_path : pathlib.Path
+        A path to the location of the output dataset.
     """
+    structure_file_paths = [pathlib.Path(x) for x in structure_files]
+    output_file_path = pathlib.Path(output_folder) / "frame_data_set.hd5"
+    total_files = len(structure_file_paths)
+    processed_files = 0
+    number_of_frames = 0
+    print(f"Output file will be written to {output_file_path.resolve()}")
+    with h5py.File(output_file_path, "w") as hd5:
+        for structure_path in structure_file_paths:
+            print(f"Processing {structure_path}...")
+            assembly = ampal.load_pdb(str(structure_path))
+            total_atoms = len(list(assembly.get_atoms()))
+            for atom in assembly.get_atoms():
+                if not atom_filter_fn(atom):
+                    del atom.parent.atoms[atom.res_label]
+            remaining_atoms = len(list(assembly.get_atoms()))
+            print(f"Filtered {total_atoms-remaining_atoms} of {total_atoms} atoms.")
+            pdb_group = hd5.create_group(structure_path.stem)
+            for chain in assembly:
+                if not isinstance(chain, ampal.Polypeptide):
+                    if verbosity > 0:
+                        print(f"\tIgnoring non-polypeptide chain ({chain.id}).")
+                    continue
+                if verbosity > 0:
+                    print(f"\tProcessing chain {chain.id}...")
+                chain_group = pdb_group.create_group(chain.id)
+                for residue in chain:
+                    if isinstance(residue, ampal.Residue):
+                        array = create_residue_frame(
+                            residue, frame_edge_length, voxels_per_side
+                        )
+                        dataset = chain_group.create_dataset(
+                            str(residue.id),
+                            (voxels_per_side, voxels_per_side, voxels_per_side),
+                            dtype="u8",
+                            data=array,
+                        )
+                        dataset.attrs["mol_code"] = residue.mol_code
+                        number_of_frames += 1
+                        if verbosity > 1:
+                            print(f"\t\tAdded residue {chain.id}:{residue.id}.")
+                if verbosity > 0:
+                    print(f"\tFinished processing chain {chain.id}.")
+            processed_files += 1
+            print(f"Finished processing {structure_path}.")
+            print(f"Files processed {processed_files}/{total_files}.")
     print(
-        f"Longest possible distance in voxel: {np.sqrt(((radius/voxels_per_side)**2)*3)}"
+        f"Created frame data set at {output_file_path} containing {number_of_frames} "
+        "frames."
     )
-    assert isinstance(
-        polypeptide, ampal.Polypeptide
-    ), f"Expected an ampal.Polypeptide, got a {type(polypeptide)}."
-    frames = dict(create_residue_frame(r, radius, voxels_per_side) for r in polypeptide)
-    return frames
+    return output_file_path
+
+
+@click.command()
+@click.argument(
+    "structure_files", type=click.Path(exists=True, readable=True), nargs=-1
+)
+@click.option(
+    "-o",
+    "--output-folder",
+    type=click.Path(),
+    default=".",
+    help=("Path to folder where output will be written."),
+)
+@click.option(
+    "--frame-edge-length",
+    type=float,
+    default=12.0,
+    help=(
+        "Edge length of the cube of space around each residue that will be voxelized."
+    ),
+)
+@click.option(
+    "--voxels-per-side",
+    type=int,
+    default=21,
+    help=(
+        "The number of voxels per side of the frame. This will give a final cube of "
+        "`voxels-per-side`^3."
+    ),
+)
+@click.option(
+    "-v",
+    "--verbose",
+    count=True,
+    help=(
+        "Sets the verbosity of the output, use `-v` for low level output or `-vv` for "
+        "even more information."
+    ),
+)
+def cli(
+    structure_files: t.List[str],
+    output_folder: str,
+    frame_edge_length: float,
+    voxels_per_side: int,
+    verbose: int,
+):
+    """Creates a data set of voxelized amino acid frames.
+
+    A frame refers to a region of space around an amino acid. Every
+    residue in the input structure(s), a cube of space around the region
+    (with an edge length equal to `--`, default 6 Å),
+    will be mapped to discreet space, with a defined number of voxels per
+    edge (equal to `--voxels-per-side`, default = 21).
+    """
+    assert len(structure_files) > 0, "Aborting, no structure files defined."
+    assert (
+        voxels_per_side % 2
+    ), "`voxels-per-side` must be odd, so that the CA is centred."
+    output_file_path = make_dataset(
+        structure_files,
+        output_folder,
+        frame_edge_length,
+        voxels_per_side,
+        default_atom_filter,
+        verbose,
+    )
+    return
+
+
+if __name__ == "__main__":
+    cli()
+
