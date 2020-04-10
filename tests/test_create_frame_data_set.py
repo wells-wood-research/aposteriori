@@ -1,4 +1,4 @@
-"""Tests data processing functionality in src/aposteriori/create_frame_data_set.py"""
+"""Tests data processing functionality in src/aposteriori/create_frame_dataset.py"""
 from pathlib import Path
 import copy
 import tempfile
@@ -32,16 +32,19 @@ def test_create_residue_frame(residue_number):
     assert np.isclose(focus_residue["C"].z, 0), "The carbon atom should lie on XY."
 
     # Make sure that all relevant atoms are pulled into the frame
-    radius = 6.0
+    frame_edge_length = 12.0
     voxels_per_side = 21
     centre = voxels_per_side // 2
-    max_dist = np.sqrt((radius ** 2) * 3)
+    max_dist = np.sqrt(((frame_edge_length / 2) ** 2) * 3)
     for atom in (
-        a for a in assembly.get_atoms(ligands=False) if cfds.within_frame(radius, a)
+        a
+        for a in assembly.get_atoms(ligands=False)
+        if cfds.within_frame(frame_edge_length, a)
     ):
-        assert (
-            g.distance(atom, (0, 0, 0)) <= max_dist
-        ), "All atoms filtered by `within_frame` should be within `radius` of the origin"
+        assert g.distance(atom, (0, 0, 0)) <= max_dist, (
+            "All atoms filtered by `within_frame` should be within "
+            "`frame_edge_length/2` of the origin"
+        )
 
     # Make sure that aligned residue sits on XY after it is discretized
     single_res_assembly = ampal.Assembly(
@@ -51,7 +54,7 @@ def test_create_residue_frame(residue_number):
     single_res_assembly[0].parent = single_res_assembly
     single_res_assembly[0][0].parent = single_res_assembly[0]
     array = cfds.create_residue_frame(
-        single_res_assembly[0][0], radius, voxels_per_side
+        single_res_assembly[0][0], frame_edge_length, voxels_per_side
     )
     assert array[centre, centre, centre] == 6, "The central atom should be CA."
     nonzero_indices = list(zip(*np.nonzero(array)))
@@ -70,16 +73,17 @@ def test_even_voxels_per_side(voxels_per_side):
     if voxels_per_side % 2:
         voxels_per_side += 1
     with pytest.raises(AssertionError, match=r".*must be odd*"):
-        output_file_path = cfds.make_dataset(
+        output_file_path = cfds.make_frame_dataset(
             structure_files=["eep"],
             output_folder=".",
-            name="test_data_set",
+            name="test_dataset",
             frame_edge_length=18.0,
             voxels_per_side=voxels_per_side,
+            require_confirmation=False,
         )
 
 
-def test_make_dataset():
+def test_make_frame_dataset():
     """Tests the creation of a frame data set."""
     test_file = TEST_DATA_DIR / "1ubq.pdb"
     frame_edge_length = 18.0
@@ -91,15 +95,16 @@ def test_make_dataset():
             del atom.parent.atoms[atom.res_label]
             del atom
     with tempfile.TemporaryDirectory() as tmpdir:
-        output_file_path = cfds.make_dataset(
+        output_file_path = cfds.make_frame_dataset(
             structure_files=[test_file],
             output_folder=tmpdir,
-            name="test_data_set",
+            name="test_dataset",
             frame_edge_length=frame_edge_length,
             voxels_per_side=voxels_per_side,
             verbosity=1,
+            require_confirmation=False,
         )
-        with h5py.File(output_file_path, "r") as data_set:
+        with h5py.File(output_file_path, "r") as dataset:
             for n in range(1, 77):
                 # check that the frame for all the data frames match between the input
                 # arrays and the ones that come out of the HDF5 data set
@@ -109,12 +114,12 @@ def test_make_dataset():
                     frame_edge_length=frame_edge_length,
                     voxels_per_side=voxels_per_side,
                 )
-                hdf5_array = data_set["1ubq"]["A"][residue_number][()]
+                hdf5_array = dataset["1ubq"]["A"][residue_number][()]
                 npt.assert_array_equal(
                     hdf5_array,
                     test_frame,
                     err_msg=(
-                        "The frame in the HDF5 dataset should be the same as the "
+                        "The frame in the HDF5 data set should be the same as the "
                         "input frame."
                     ),
                 )

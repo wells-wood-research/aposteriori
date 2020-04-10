@@ -1,19 +1,19 @@
-"""Tools for creating a frame data set.
+"""Tools for creating a frame dataset.
 
-In this type of data set, all individual entries are stored separately in a flat
+In this type of dataset, all individual entries are stored separately in a flat
 structure.
 """
 
 import glob
 import pathlib
 import typing as t
+import sys
 
 import ampal
 import ampal.geometry as geometry
 import click
 import h5py
 import numpy as np
-
 
 StrOrPath = t.Union[str, pathlib.Path]
 
@@ -58,7 +58,7 @@ def align_to_residue_plane(residue: ampal.Residue):
 
 
 def within_frame(frame_edge_length: float, atom: ampal.Atom) -> bool:
-    """Tests if an atom is within the `radius` of the origin."""
+    """Tests if an atom is within the `frame_edge_length` of the origin."""
     half_frame_edge_length = frame_edge_length / 2
     return all([0 <= abs(v) <= half_frame_edge_length for v in atom.array])
 
@@ -89,7 +89,7 @@ def discretize(
 def create_residue_frame(
     residue: ampal.Residue, frame_edge_length: float, voxels_per_side: int,
 ) -> np.ndarray:
-    """Creates a discreet representation of a volume of space around a residue.
+    """Creates a discrete representation of a volume of space around a residue.
     
     Notes
     -----
@@ -109,7 +109,7 @@ def create_residue_frame(
     Returns
     -------
     frame: ndarray
-        Numpy array containing the discreet representation of a cube of space around the
+        Numpy array containing the discrete representation of a cube of space around the
         residue.
     
     Raises
@@ -128,7 +128,7 @@ def create_residue_frame(
     chain = residue.parent
 
     align_to_residue_plane(residue)
-    # create an empty array for discreet frame
+    # create an empty array for discrete frame
     frame = np.zeros(
         (voxels_per_side, voxels_per_side, voxels_per_side), dtype=np.uint8
     )
@@ -177,16 +177,17 @@ def default_atom_filter(atom: ampal.Atom) -> bool:
         return False
 
 
-def make_dataset(
-    structure_files: t.Iterable[StrOrPath],
+def make_frame_dataset(
+    structure_files: t.List[StrOrPath],
     output_folder: StrOrPath,
     name: str,
     frame_edge_length: float,
     voxels_per_side: int,
     atom_filter_fn: t.Callable[[ampal.Atom], bool] = default_atom_filter,
     verbosity: int = 1,
+    require_confirmation: bool = True,
 ) -> pathlib.Path:
-    """Creates a data set of voxelized amino acid frames.
+    """Creates a dataset of voxelized amino acid frames.
 
     Parameters
     ----------
@@ -195,7 +196,7 @@ def make_dataset(
     output_folder: StrOrPath
         Path to folder where output will be written.
     name: str
-        Name used for the data set file, `.hd5` will be appended.
+        Name used for the dataset file, `.hd5` will be appended.
     frame_edge_length: float
         The length of the edges of the frame.
     voxels_per_side: int
@@ -208,6 +209,8 @@ def make_dataset(
         removed.
     verbosity: int
         Level of logging sent to std out.
+    require_confirmation: bool
+        If True, the user will be prompted to start creating the dataset.
 
     Returns
     -------
@@ -223,7 +226,23 @@ def make_dataset(
     total_files = len(structure_file_paths)
     processed_files = 0
     number_of_frames = 0
+
+    print(f"Will attempt to process {total_files} structure file/s.")
     print(f"Output file will be written to `{output_file_path.resolve()}`.")
+    voxel_edge_length = frame_edge_length / voxels_per_side
+    max_voxel_distance = np.sqrt(voxel_edge_length ** 2 * 3)
+    print(f"Frame edge length = {frame_edge_length:.2f} A")
+    print(f"Voxels per side = {voxels_per_side}")
+    print(f"Voxels will have an edge length of {voxel_edge_length:.2f} A.")
+    print(f"Max internal distance of each voxel will be {max_voxel_distance:.2f} A.")
+    if require_confirmation:
+        print("Do you want to continue? [y]/n")
+        response = input()
+        if not ((response == "") or (response == "y")):
+            print("Aborting.")
+            sys.exit()
+    print("Creating dataset...")
+
     with h5py.File(output_file_path, "w") as hd5:
         for structure_path in structure_file_paths:
             print(f"Processing `{structure_path}`...")
@@ -265,7 +284,7 @@ def make_dataset(
             print(f"Finished processing `{structure_path}`.")
             print(f"Files processed {processed_files}/{total_files}.")
     print(
-        f"Created frame data set at `{output_file_path.resolve()}` containing "
+        f"Created frame dataset at `{output_file_path.resolve()}` containing "
         f"{number_of_frames} frames."
     )
     return output_file_path
@@ -286,9 +305,9 @@ def make_dataset(
     "-n",
     "--name",
     type=str,
-    default="frame_data_set",
+    default="frame_dataset",
     help=(
-        "Name used for the data set file, the `.hdf5` extension does not need to be "
+        "Name used for the dataset file, the `.hdf5` extension does not need to be "
         "included as it will be appended."
     ),
 )
@@ -319,22 +338,33 @@ def make_dataset(
     ),
 )
 def cli(
-    structure_files: t.List[str],
+    structure_files: t.List[StrOrPath],
     output_folder: str,
     name: str,
     frame_edge_length: float,
     voxels_per_side: int,
     verbose: int,
 ):
-    """Creates a data set of voxelized amino acid frames.
+    """Creates a dataset of voxelized amino acid frames.
 
-    A frame refers to a region of space around an amino acid. Every
+    A frame refers to a region of space around an amino acid. For every
     residue in the input structure(s), a cube of space around the region
-    (with an edge length equal to `--`, default 6 Å),
-    will be mapped to discreet space, with a defined number of voxels per
+    (with an edge length equal to `--frame_edge_length`, default 12 Å),
+    will be mapped to discrete space, with a defined number of voxels per
     edge (equal to `--voxels-per-side`, default = 21).
+
+    Basic Usage:
+
+    `make-frame-dataset -o /tmp/ -n test_dataset 1ubq.pdb 1ctf.pdb`
+
+    This command will make a tiny dataset found at `/tmp/test_dataset.hdf5`,
+    containing all residues 1ubq.pdb and 1ctf.pdb
+
+    Globs can be used to define the structure files to be processed.
+    `make-frame-dataset pdb_files/**/*.pdb` would include all `.pdb` files in all
+    subdirectories of the `pdb_files` directory.
     """
-    output_file_path = make_dataset(
+    output_file_path = make_frame_dataset(
         structure_files,
         output_folder,
         name,
