@@ -1,13 +1,16 @@
 """Tests data processing functionality in src/aposteriori/create_frame_data_set.py"""
 from pathlib import Path
 import copy
+import tempfile
 
-import aposteriori.data_prep.create_frame_data_set as cfds
-import ampal
-import ampal.geometry as g
 from hypothesis import given, settings
 from hypothesis.strategies import integers
+import ampal
+import ampal.geometry as g
+import aposteriori.data_prep.create_frame_data_set as cfds
+import h5py
 import numpy as np
+import numpy.testing as npt
 import pytest
 
 TEST_DATA_DIR = Path("tests/testing_files/pdb_files/")
@@ -47,7 +50,7 @@ def test_create_residue_frame(residue_number):
     # Need to reassign the parent so that the residue is the only thing in the assembly
     single_res_assembly[0].parent = single_res_assembly
     single_res_assembly[0][0].parent = single_res_assembly[0]
-    label, array = cfds.create_residue_frame(
+    array = cfds.create_residue_frame(
         single_res_assembly[0][0], radius, voxels_per_side
     )
     assert array[centre, centre, centre] == 6, "The central atom should be CA."
@@ -59,3 +62,59 @@ def test_create_residue_frame(residue_number):
     assert (
         3 <= len(nonzero_on_xy_indices) <= 4
     ), "N, CA and C should lie on the xy plane."
+
+
+@given(integers(min_value=1))
+def test_even_voxels_per_side(voxels_per_side):
+    frame_edge_length = 18.0
+    if voxels_per_side % 2:
+        voxels_per_side += 1
+    with pytest.raises(AssertionError, match=r".*must be odd*"):
+        output_file_path = cfds.make_dataset(
+            structure_files=["eep"],
+            output_folder=".",
+            name="test_data_set",
+            frame_edge_length=18.0,
+            voxels_per_side=voxels_per_side,
+        )
+
+
+def test_make_dataset():
+    """Tests the creation of a frame data set."""
+    test_file = TEST_DATA_DIR / "1ubq.pdb"
+    frame_edge_length = 18.0
+    voxels_per_side = 31
+
+    ampal_1ubq = ampal.load_pdb(str(test_file))
+    for atom in ampal_1ubq.get_atoms():
+        if not cfds.default_atom_filter(atom):
+            del atom.parent.atoms[atom.res_label]
+            del atom
+    with tempfile.TemporaryDirectory() as tmpdir:
+        output_file_path = cfds.make_dataset(
+            structure_files=[test_file],
+            output_folder=tmpdir,
+            name="test_data_set",
+            frame_edge_length=frame_edge_length,
+            voxels_per_side=voxels_per_side,
+            verbosity=1,
+        )
+        with h5py.File(output_file_path, "r") as data_set:
+            for n in range(1, 77):
+                # check that the frame for all the data frames match between the input
+                # arrays and the ones that come out of the HDF5 data set
+                residue_number = str(n)
+                test_frame = cfds.create_residue_frame(
+                    residue=ampal_1ubq["A"][residue_number],
+                    frame_edge_length=frame_edge_length,
+                    voxels_per_side=voxels_per_side,
+                )
+                hdf5_array = data_set["1ubq"]["A"][residue_number][()]
+                npt.assert_array_equal(
+                    hdf5_array,
+                    test_frame,
+                    err_msg=(
+                        "The frame in the HDF5 dataset should be the same as the "
+                        "input frame."
+                    ),
+                )
