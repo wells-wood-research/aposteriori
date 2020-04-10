@@ -27,7 +27,7 @@ def align_to_residue_plane(residue: ampal.Residue):
     
     Parameters
     ----------
-    residue : ampal.Residue
+    residue: ampal.Residue
         Residue that will be used as a reference to reorient the assemble.
         The assembly will be reoriented so that the residue['CA'] lies on the origin,
         residue['N'] lies on +Y and residue['C'] lies on +X-Y, assuming correct
@@ -70,11 +70,11 @@ def discretize(
 
     Parameters
     ----------
-    atom : ampal.Atom
+    atom: ampal.Atom
         Atom x, y, z coordinates will be discretized based on `voxel_edge_length`.
-    voxel_edge_length : float
+    voxel_edge_length: float
         Edge length of the voxels that are mapped onto cartesian space.
-    adjust_by : int
+    adjust_by: int
     """
 
     # I'm explicitly repeating this operation to make it explicit to the type checker
@@ -97,18 +97,18 @@ def create_residue_frame(
     
     Parameters
     ----------
-    residue : ampal.Residue
+    residue: ampal.Residue
         The residue to be converted to a frame.
-    frame_edge_length : float
+    frame_edge_length: float
         The length of the edges of the frame.
-    voxels_per_side : int
+    voxels_per_side: int
         The number of voxels per edge that the cube of space will be converted into i.e.
         the final cube will be `voxels_per_side`^3. This must be a odd, positive integer
         so that the CA atom can be placed at the centre of the frame.
     
     Returns
     -------
-    frame : ndarray
+    frame: ndarray
         Numpy array containing the discreet representation of a cube of space around the
         residue.
     
@@ -180,6 +180,7 @@ def default_atom_filter(atom: ampal.Atom) -> bool:
 def make_dataset(
     structure_files: t.Iterable[StrOrPath],
     output_folder: StrOrPath,
+    name: str,
     frame_edge_length: float,
     voxels_per_side: int,
     atom_filter_fn: t.Callable[[ampal.Atom], bool] = default_atom_filter,
@@ -189,35 +190,39 @@ def make_dataset(
 
     Parameters
     ----------
-    structure_files : List[str or pathlib.Path]
+    structure_files: List[str or pathlib.Path]
         List of paths to pdb files to be processed into frames
-    frame_edge_length : float
+    output_folder: StrOrPath
+        Path to folder where output will be written.
+    name: str
+        Name used for the data set file, `.hd5` will be appended.
+    frame_edge_length: float
         The length of the edges of the frame.
-    voxels_per_side : int
+    voxels_per_side: int
         The number of voxels per edge that the cube of space will be converted into i.e.
         the final cube will be `voxels_per_side`^3. This must be a odd, positive integer
         so that the CA atom can be placed at the centre of the frame.
-    atom_filter_fn : ampal.Atom -> bool
+    atom_filter_fn: ampal.Atom -> bool
         A function used to preprocess structures to remove atoms that are not to be
         included in the final structure. By default water and side chain atoms will be
         removed.
-    verbosity : int
+    verbosity: int
         Level of logging sent to std out.
 
     Returns
     -------
-    output_file_path : pathlib.Path
+    output_file_path: pathlib.Path
         A path to the location of the output dataset.
     """
     structure_file_paths = [pathlib.Path(x) for x in structure_files]
-    output_file_path = pathlib.Path(output_folder) / "frame_data_set.hd5"
+    output_file_path = pathlib.Path(output_folder) / (name + ".hdf5")
     total_files = len(structure_file_paths)
     processed_files = 0
     number_of_frames = 0
-    print(f"Output file will be written to {output_file_path.resolve()}")
+    print(f"Output file will be written to `{output_file_path.resolve()}`.")
     with h5py.File(output_file_path, "w") as hd5:
         for structure_path in structure_file_paths:
-            print(f"Processing {structure_path}...")
+            print(f"Processing `{structure_path}`...")
             assembly = ampal.load_pdb(str(structure_path))
             total_atoms = len(list(assembly.get_atoms()))
             for atom in assembly.get_atoms():
@@ -252,11 +257,11 @@ def make_dataset(
                 if verbosity > 0:
                     print(f"\tFinished processing chain {chain.id}.")
             processed_files += 1
-            print(f"Finished processing {structure_path}.")
+            print(f"Finished processing `{structure_path}`.")
             print(f"Files processed {processed_files}/{total_files}.")
     print(
-        f"Created frame data set at {output_file_path} containing {number_of_frames} "
-        "frames."
+        f"Created frame data set at `{output_file_path.resolve()}` containing "
+        f"{number_of_frames} frames."
     )
     return output_file_path
 
@@ -271,6 +276,16 @@ def make_dataset(
     type=click.Path(),
     default=".",
     help=("Path to folder where output will be written."),
+)
+@click.option(
+    "-n",
+    "--name",
+    type=str,
+    default="frame_data_set",
+    help=(
+        "Name used for the data set file, the `.hdf5` extension does not need to be "
+        "included as it will be appended."
+    ),
 )
 @click.option(
     "--frame-edge-length",
@@ -301,6 +316,7 @@ def make_dataset(
 def cli(
     structure_files: t.List[str],
     output_folder: str,
+    name: str,
     frame_edge_length: float,
     voxels_per_side: int,
     verbose: int,
@@ -320,6 +336,7 @@ def cli(
     output_file_path = make_dataset(
         structure_files,
         output_folder,
+        name,
         frame_edge_length,
         voxels_per_side,
         default_atom_filter,
@@ -329,5 +346,7 @@ def cli(
 
 
 if __name__ == "__main__":
+    # The cli will be run if this file is invoked directly
+    # It is also hooked up as a script in `pyproject.toml`
     cli()
 
