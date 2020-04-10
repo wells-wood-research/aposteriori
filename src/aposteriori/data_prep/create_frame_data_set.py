@@ -214,6 +214,10 @@ def make_dataset(
     output_file_path: pathlib.Path
         A path to the location of the output dataset.
     """
+    assert len(structure_files) > 0, "Aborting, no structure files defined."
+    assert (
+        voxels_per_side % 2
+    ), "`voxels-per-side` must be odd, so that the CA is centred."
     structure_file_paths = [pathlib.Path(x) for x in structure_files]
     output_file_path = pathlib.Path(output_folder) / (name + ".hdf5")
     total_files = len(structure_file_paths)
@@ -228,6 +232,7 @@ def make_dataset(
             for atom in assembly.get_atoms():
                 if not atom_filter_fn(atom):
                     del atom.parent.atoms[atom.res_label]
+                    del atom
             remaining_atoms = len(list(assembly.get_atoms()))
             print(f"Filtered {total_atoms-remaining_atoms} of {total_atoms} atoms.")
             pdb_group = hd5.create_group(structure_path.stem)
@@ -329,10 +334,6 @@ def cli(
     will be mapped to discreet space, with a defined number of voxels per
     edge (equal to `--voxels-per-side`, default = 21).
     """
-    assert len(structure_files) > 0, "Aborting, no structure files defined."
-    assert (
-        voxels_per_side % 2
-    ), "`voxels-per-side` must be odd, so that the CA is centred."
     output_file_path = make_dataset(
         structure_files,
         output_folder,
