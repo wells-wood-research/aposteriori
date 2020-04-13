@@ -4,10 +4,13 @@ In this type of dataset, all individual entries are stored separately in a flat
 structure.
 """
 
+from dataclasses import dataclass
 import glob
+import multiprocessing as mp
 import pathlib
-import typing as t
 import sys
+import time
+import typing as t
 
 import ampal
 import ampal.geometry as geometry
@@ -15,7 +18,21 @@ import click
 import h5py
 import numpy as np
 
+# {{{ Types
+
+
+@dataclass
+class ResidueResult:
+    residue_id: str
+    label: str
+    data: np.ndarray
+
+
 StrOrPath = t.Union[str, pathlib.Path]
+ChainDict = t.Dict[str, t.List[ResidueResult]]
+
+
+# }}}
 
 
 def align_to_residue_plane(residue: ampal.Residue):
@@ -132,7 +149,6 @@ def create_residue_frame(
     frame = np.zeros(
         (voxels_per_side, voxels_per_side, voxels_per_side), dtype=np.uint8
     )
-    frame.fill(0)
     # iterate through all atoms within the frame
     for atom in (
         a
@@ -177,6 +193,152 @@ def default_atom_filter(atom: ampal.Atom) -> bool:
         return False
 
 
+def process_single_path(
+    path_queue: mp.SimpleQueue,
+    result_queue: mp.SimpleQueue,
+    frame_edge_length: float,
+    voxels_per_side: int,
+    atom_filter_fn: t.Callable[[ampal.Atom], bool],
+    errors: t.List[str],
+    verbosity: int,
+):
+    """Processes a path and puts the results into a queue."""
+    while True:
+        structure_path = path_queue.get()
+        print(f"Processing `{structure_path}`...")
+        name = structure_path.stem
+        chain_dict: ChainDict = {}
+        assembly = ampal.load_pdb(str(structure_path))
+        total_atoms = len(list(assembly.get_atoms()))
+        for atom in assembly.get_atoms():
+            if not atom_filter_fn(atom):
+                del atom.parent.atoms[atom.res_label]
+                del atom
+        remaining_atoms = len(list(assembly.get_atoms()))
+        print(f"{name}: Filtered {total_atoms-remaining_atoms} of {total_atoms} atoms.")
+        for chain in assembly:
+            if not isinstance(chain, ampal.Polypeptide):
+                if verbosity > 0:
+                    print(f"{name}: \tIgnoring non-polypeptide chain ({chain.id}).")
+                continue
+            if verbosity > 0:
+                print(f"{name}: \tProcessing chain {chain.id}...")
+            chain_dict[chain.id] = []
+            for residue in chain:
+                if isinstance(residue, ampal.Residue):
+                    array = create_residue_frame(
+                        residue, frame_edge_length, voxels_per_side
+                    )
+                    chain_dict[chain.id].append(
+                        ResidueResult(
+                            residue_id=str(residue.id),
+                            label=residue.mol_code,
+                            data=array,
+                        )
+                    )
+                    if verbosity > 1:
+                        print(f"{name}: \t\tAdded residue {chain.id}:{residue.id}.")
+            if verbosity > 0:
+                print(f"{name}: \tFinished processing chain {chain.id}.")
+        # if isinstance(result, str):
+        #     errors.append(result)
+        # else:
+        result_queue.put((name, chain_dict))
+
+
+def save_results(
+    result_queue: mp.SimpleQueue,
+    h5_path: pathlib.Path,
+    total_files: int,
+    complete: mp.Value,
+    frames: mp.Value,
+):
+    """Saves voxelized structures to a hdf5 object."""
+    with h5py.File(str(h5_path), "w") as hd5:
+        while True:
+            # Requires explicit type annotation as I can't figure out how to annotate
+            # the SimpleQueue object directly
+            result: t.Tuple[str, ChainDict] = result_queue.get()
+            if result == "BREAK":
+                break
+            pdb_code, chain_dict = result
+            pdb_group = hd5.create_group(pdb_code)
+            for chain_id, res_results in chain_dict.items():
+                chain_group = pdb_group.create_group(chain_id)
+                for res_result in res_results:
+                    res_dataset = chain_group.create_dataset(
+                        res_result.residue_id, data=res_result.data, dtype="u8"
+                    )
+                    res_dataset.attrs["label"] = res_result.label
+                frames.value += 1
+            print(f"Finished processing `{pdb_code}`.")
+            complete.value += 1
+            print(f"Files processed {complete.value}/{total_files}.")
+        print(
+            f"Created frame dataset at `{h5_path.resolve()}` containing "
+            f"{frames} frames."
+        )
+
+
+def process_paths(
+    structure_file_paths: t.List[pathlib.Path],
+    output_path: pathlib.Path,
+    frame_edge_length: float,
+    voxels_per_side: int,
+    processes: int,
+    verbosity: int,
+) -> t.List[str]:
+    """Discretizes a list of structures and stores them in a HDF5 object."""
+    with mp.Manager() as manager:
+        # Need to ignore the type here due to a weird problem with the Queue type not
+        # being found
+        path_queue = manager.Queue()  # type: ignore
+        total_paths = len(structure_file_paths)
+        for path in structure_file_paths:
+            path_queue.put(path)
+        result_queue = manager.Queue()  # type: ignore
+        complete = manager.Value("i", 0)  # type: ignore
+        frames = manager.Value("i", 0)  # type: ignore
+        errors = manager.list()  # type: ignore
+        total = len(structure_file_paths)
+        workers = [
+            mp.Process(
+                target=process_single_path,
+                args=(
+                    path_queue,
+                    result_queue,
+                    frame_edge_length,
+                    voxels_per_side,
+                    default_atom_filter,
+                    errors,
+                    verbosity,
+                ),
+            )
+            for proc_i in range(processes)
+        ]
+        storer = mp.Process(
+            target=save_results,
+            args=(result_queue, output_path, total_paths, complete, frames),
+        )
+        all_processes = workers + [storer]
+        for proc in all_processes:
+            proc.start()
+        while (complete.value + len(errors)) < total:
+            if not all([p.is_alive() for p in all_processes]):
+                print("One or more of the processes died, aborting...")
+                break
+            print(f"{((complete.value + len(errors))/total)*100:.0f}% processed...")
+            time.sleep(5)
+        else:
+            print(f"Finished processing files.")
+            result_queue.put("BREAK")
+            storer.join()
+        for proc in all_processes:
+            proc.terminate()
+        errors = list(errors)
+    return errors
+
+
 def make_frame_dataset(
     structure_files: t.List[StrOrPath],
     output_folder: StrOrPath,
@@ -184,6 +346,7 @@ def make_frame_dataset(
     frame_edge_length: float,
     voxels_per_side: int,
     atom_filter_fn: t.Callable[[ampal.Atom], bool] = default_atom_filter,
+    processes: int = 1,
     verbosity: int = 1,
     require_confirmation: bool = True,
 ) -> pathlib.Path:
@@ -207,6 +370,8 @@ def make_frame_dataset(
         A function used to preprocess structures to remove atoms that are not to be
         included in the final structure. By default water and side chain atoms will be
         removed.
+    processes: int
+        Number of processes to used to process structure files.
     verbosity: int
         Level of logging sent to std out.
     require_confirmation: bool
@@ -242,51 +407,15 @@ def make_frame_dataset(
             print("Aborting.")
             sys.exit()
     print("Creating dataset...")
-
-    with h5py.File(output_file_path, "w") as hd5:
-        for structure_path in structure_file_paths:
-            print(f"Processing `{structure_path}`...")
-            assembly = ampal.load_pdb(str(structure_path))
-            total_atoms = len(list(assembly.get_atoms()))
-            for atom in assembly.get_atoms():
-                if not atom_filter_fn(atom):
-                    del atom.parent.atoms[atom.res_label]
-                    del atom
-            remaining_atoms = len(list(assembly.get_atoms()))
-            print(f"Filtered {total_atoms-remaining_atoms} of {total_atoms} atoms.")
-            pdb_group = hd5.create_group(structure_path.stem)
-            for chain in assembly:
-                if not isinstance(chain, ampal.Polypeptide):
-                    if verbosity > 0:
-                        print(f"\tIgnoring non-polypeptide chain ({chain.id}).")
-                    continue
-                if verbosity > 0:
-                    print(f"\tProcessing chain {chain.id}...")
-                chain_group = pdb_group.create_group(chain.id)
-                for residue in chain:
-                    if isinstance(residue, ampal.Residue):
-                        array = create_residue_frame(
-                            residue, frame_edge_length, voxels_per_side
-                        )
-                        dataset = chain_group.create_dataset(
-                            str(residue.id),
-                            (voxels_per_side, voxels_per_side, voxels_per_side),
-                            dtype="u8",
-                            data=array,
-                        )
-                        dataset.attrs["mol_code"] = residue.mol_code
-                        number_of_frames += 1
-                        if verbosity > 1:
-                            print(f"\t\tAdded residue {chain.id}:{residue.id}.")
-                if verbosity > 0:
-                    print(f"\tFinished processing chain {chain.id}.")
-            processed_files += 1
-            print(f"Finished processing `{structure_path}`.")
-            print(f"Files processed {processed_files}/{total_files}.")
-    print(
-        f"Created frame dataset at `{output_file_path.resolve()}` containing "
-        f"{number_of_frames} frames."
+    process_paths(
+        structure_file_paths=structure_file_paths,
+        output_path=output_file_path,
+        frame_edge_length=frame_edge_length,
+        voxels_per_side=voxels_per_side,
+        processes=processes,
+        verbosity=verbosity,
     )
+
     return output_file_path
 
 
@@ -329,6 +458,13 @@ def make_frame_dataset(
     ),
 )
 @click.option(
+    "-p",
+    "--processes",
+    type=int,
+    default=1,
+    help=("Number of processes to be used to create the dataset."),
+)
+@click.option(
     "-v",
     "--verbose",
     count=True,
@@ -343,6 +479,7 @@ def cli(
     name: str,
     frame_edge_length: float,
     voxels_per_side: int,
+    processes: int,
     verbose: int,
 ):
     """Creates a dataset of voxelized amino acid frames.
@@ -363,6 +500,17 @@ def cli(
     Globs can be used to define the structure files to be processed.
     `make-frame-dataset pdb_files/**/*.pdb` would include all `.pdb` files in all
     subdirectories of the `pdb_files` directory.
+
+    The hdf5 object itself is like a Python dict. The structure is
+    simple:
+
+    hdf5 Contains a number of groups, one for each structure file.
+    └─[pdb_code] Contains a number of subgroups, one for each chain.
+      └─[chain_id] Contains a number of subgroups, one for each residue.
+        └─[residue_id] voxels_per_side^3 array of ints, representing element number.
+          └─.attrs['label'] Three-letter code for the residue.
+
+    So hdf7['1ctf']['A']['58'] would be an array for the voxelized.
     """
     output_file_path = make_frame_dataset(
         structure_files,
@@ -371,6 +519,7 @@ def cli(
         frame_edge_length,
         voxels_per_side,
         default_atom_filter,
+        processes,
         verbose,
     )
     return
