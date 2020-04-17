@@ -19,8 +19,6 @@ import h5py
 import numpy as np
 
 # {{{ Types
-
-
 @dataclass
 class ResidueResult:
     residue_id: str
@@ -33,8 +31,7 @@ ChainDict = t.Dict[str, t.List[ResidueResult]]
 
 
 # }}}
-
-
+# {{{ Residue Frame Creation
 def align_to_residue_plane(residue: ampal.Residue):
     """Reorients the parent ampal.Assembly that the peptide plane lies on xy.
     
@@ -182,6 +179,60 @@ def create_residue_frame(
     return frame
 
 
+def create_frames_from_structure(
+    structure_path: pathlib.Path,
+    frame_edge_length: float,
+    voxels_per_side: int,
+    atom_filter_fn: t.Callable[[ampal.Atom], bool],
+    chain_filter_dict: t.Optional[t.Dict[str, t.List[str]]],
+    verbosity: int,
+):
+    name = structure_path.stem
+    chain_dict: ChainDict = {}
+    assembly = ampal.load_pdb(str(structure_path))
+    total_atoms = len(list(assembly.get_atoms()))
+    for atom in assembly.get_atoms():
+        if not atom_filter_fn(atom):
+            del atom.parent.atoms[atom.res_label]
+            del atom
+    remaining_atoms = len(list(assembly.get_atoms()))
+    print(f"{name}: Filtered {total_atoms-remaining_atoms} of {total_atoms} atoms.")
+    for chain in assembly:
+        if chain_filter_dict:
+            if chain.id.upper() not in chain_filter_dict[structure_path.stem.upper()]:
+
+                if verbosity > 0:
+                    print(
+                        f"{name}:\tIgnoring chain {chain.id}, not in Pieces filter "
+                        f"file."
+                    )
+                continue
+        if not isinstance(chain, ampal.Polypeptide):
+            if verbosity > 0:
+                print(f"{name}:\tIgnoring non-polypeptide chain ({chain.id}).")
+            continue
+        if verbosity > 0:
+            print(f"{name}:\tProcessing chain {chain.id}...")
+        chain_dict[chain.id] = []
+        for residue in chain:
+            if isinstance(residue, ampal.Residue):
+                array = create_residue_frame(
+                    residue, frame_edge_length, voxels_per_side
+                )
+                chain_dict[chain.id].append(
+                    ResidueResult(
+                        residue_id=str(residue.id), label=residue.mol_code, data=array,
+                    )
+                )
+                if verbosity > 1:
+                    print(f"{name}:\t\tAdded residue {chain.id}:{residue.id}.")
+        if verbosity > 0:
+            print(f"{name}:\tFinished processing chain {chain.id}.")
+    return (name, chain_dict)
+
+
+# }}}
+# {{{ Dataset Creation
 def default_atom_filter(atom: ampal.Atom) -> bool:
     """Filters for all heavy protein backbone atoms."""
     backbone_atoms = ("N", "CA", "C", "O")
@@ -199,51 +250,30 @@ def process_single_path(
     frame_edge_length: float,
     voxels_per_side: int,
     atom_filter_fn: t.Callable[[ampal.Atom], bool],
+    chain_filter_dict: t.Optional[t.Dict[str, t.List[str]]],
     errors: t.List[str],
     verbosity: int,
 ):
     """Processes a path and puts the results into a queue."""
+    result: t.Union[t.Tuple[str, ChainDict], str]
     while True:
         structure_path = path_queue.get()
         print(f"Processing `{structure_path}`...")
-        name = structure_path.stem
-        chain_dict: ChainDict = {}
-        assembly = ampal.load_pdb(str(structure_path))
-        total_atoms = len(list(assembly.get_atoms()))
-        for atom in assembly.get_atoms():
-            if not atom_filter_fn(atom):
-                del atom.parent.atoms[atom.res_label]
-                del atom
-        remaining_atoms = len(list(assembly.get_atoms()))
-        print(f"{name}: Filtered {total_atoms-remaining_atoms} of {total_atoms} atoms.")
-        for chain in assembly:
-            if not isinstance(chain, ampal.Polypeptide):
-                if verbosity > 0:
-                    print(f"{name}: \tIgnoring non-polypeptide chain ({chain.id}).")
-                continue
-            if verbosity > 0:
-                print(f"{name}: \tProcessing chain {chain.id}...")
-            chain_dict[chain.id] = []
-            for residue in chain:
-                if isinstance(residue, ampal.Residue):
-                    array = create_residue_frame(
-                        residue, frame_edge_length, voxels_per_side
-                    )
-                    chain_dict[chain.id].append(
-                        ResidueResult(
-                            residue_id=str(residue.id),
-                            label=residue.mol_code,
-                            data=array,
-                        )
-                    )
-                    if verbosity > 1:
-                        print(f"{name}: \t\tAdded residue {chain.id}:{residue.id}.")
-            if verbosity > 0:
-                print(f"{name}: \tFinished processing chain {chain.id}.")
-        # if isinstance(result, str):
-        #     errors.append(result)
-        # else:
-        result_queue.put((name, chain_dict))
+        try:
+            result = create_frames_from_structure(
+                structure_path,
+                frame_edge_length,
+                voxels_per_side,
+                atom_filter_fn,
+                chain_filter_dict,
+                verbosity,
+            )
+        except Exception as e:
+            result = str(e)
+        if isinstance(result, str):
+            errors.append(result)
+        else:
+            result_queue.put(result)
 
 
 def save_results(
@@ -270,14 +300,11 @@ def save_results(
                         res_result.residue_id, data=res_result.data, dtype="u8"
                     )
                     res_dataset.attrs["label"] = res_result.label
-                frames.value += 1
-            print(f"Finished processing `{pdb_code}`.")
+                    frames.value += 1
+            print(f"{pdb_code}: Finished processing.")
             complete.value += 1
             print(f"Files processed {complete.value}/{total_files}.")
-        print(
-            f"Created frame dataset at `{h5_path.resolve()}` containing "
-            f"{frames} frames."
-        )
+        print(f"Finished processing files.")
 
 
 def process_paths(
@@ -285,10 +312,38 @@ def process_paths(
     output_path: pathlib.Path,
     frame_edge_length: float,
     voxels_per_side: int,
+    atom_filter_fn: t.Callable[[ampal.Atom], bool],
+    chain_filter_dict: t.Optional[t.Dict[str, t.List[str]]],
     processes: int,
     verbosity: int,
-) -> t.List[str]:
-    """Discretizes a list of structures and stores them in a HDF5 object."""
+):
+    """Discretizes a list of structures and stores them in a HDF5 object.
+
+    Parameters
+    ----------
+    structure_file_paths: List[pathlib.Path]
+        List of paths to pdb files to be processed into frames
+    output_path: pathlib.Path
+        Path where dataset will be written.
+    frame_edge_length: float
+        The length of the edges of the frame.
+    voxels_per_side: int
+        The number of voxels per edge that the cube of space will be converted into i.e.
+        the final cube will be `voxels_per_side`^3. This must be a odd, positive integer
+        so that the CA atom can be placed at the centre of the frame.
+    atom_filter_fn: ampal.Atom -> bool
+        A function used to preprocess structures to remove atoms that are not to be
+        included in the final structure. By default water and side chain atoms will be
+        removed.
+    pieces_filter_file: Optional[StrOrPath]
+        A path to a Pieces file that will be used to filter the input files and specify
+        chains to be included in the dataset.
+    processes: int
+        Number of processes to used to process structure files.
+    verbosity: int
+        Level of logging sent to std out.
+    """
+
     with mp.Manager() as manager:
         # Need to ignore the type here due to a weird problem with the Queue type not
         # being found
@@ -309,7 +364,8 @@ def process_paths(
                     result_queue,
                     frame_edge_length,
                     voxels_per_side,
-                    default_atom_filter,
+                    atom_filter_fn,
+                    chain_filter_dict,
                     errors,
                     verbosity,
                 ),
@@ -327,16 +383,24 @@ def process_paths(
             if not all([p.is_alive() for p in all_processes]):
                 print("One or more of the processes died, aborting...")
                 break
-            print(f"{((complete.value + len(errors))/total)*100:.0f}% processed...")
             time.sleep(5)
         else:
-            print(f"Finished processing files.")
             result_queue.put("BREAK")
             storer.join()
         for proc in all_processes:
             proc.terminate()
         errors = list(errors)
-    return errors
+        if (verbosity > 0) and (errors):
+            print(f"There were {len(errors)} errors while creating the dataset:")
+            for error in errors:
+                print(f"\t{error}")
+        else:
+            print(f"There were {len(errors)} errors while creating the dataset.")
+        print(
+            f"Created frame dataset at `{output_path.resolve()}` containing "
+            f"{frames.value} residue frames."
+        )
+    return
 
 
 def make_frame_dataset(
@@ -346,6 +410,7 @@ def make_frame_dataset(
     frame_edge_length: float,
     voxels_per_side: int,
     atom_filter_fn: t.Callable[[ampal.Atom], bool] = default_atom_filter,
+    pieces_filter_file: t.Optional[StrOrPath] = None,
     processes: int = 1,
     verbosity: int = 1,
     require_confirmation: bool = True,
@@ -370,6 +435,9 @@ def make_frame_dataset(
         A function used to preprocess structures to remove atoms that are not to be
         included in the final structure. By default water and side chain atoms will be
         removed.
+    pieces_filter_file: Optional[StrOrPath]
+        A path to a Pieces file that will be used to filter the input files and specify
+        chains to be included in the dataset.
     processes: int
         Number of processes to used to process structure files.
     verbosity: int
@@ -382,11 +450,36 @@ def make_frame_dataset(
     output_file_path: pathlib.Path
         A path to the location of the output dataset.
     """
+    chain_filter_dict: t.Optional[t.Dict[str, t.List[str]]]
+
     assert len(structure_files) > 0, "Aborting, no structure files defined."
     assert (
         voxels_per_side % 2
     ), "`voxels-per-side` must be odd, so that the CA is centred."
+    if pieces_filter_file:
+        # Assuming standard Pieces format, ignore first row, take first column and
+        # split into PDB code and chain
+        with open(pieces_filter_file, "r") as inf:
+            chain_filter_dict = {}
+            _ = inf.__next__()
+            for line in inf:
+                pdb_code = line[:4]
+                chain_id = line[4]
+                if not pdb_code in chain_filter_dict:
+                    chain_filter_dict[pdb_code] = []
+                chain_filter_dict[pdb_code].append(chain_id)
+    else:
+        chain_filter_dict = None
     structure_file_paths = [pathlib.Path(x) for x in structure_files]
+    if chain_filter_dict:
+        original_path_num = len(structure_file_paths)
+        structure_file_paths = [
+            p for p in structure_file_paths if p.stem.upper() in chain_filter_dict
+        ]
+        print(
+            f"{original_path_num - len(structure_file_paths)} structure file/s were "
+            f"not found in the Pieces filter file, these will not be processed."
+        )
     output_file_path = pathlib.Path(output_folder) / (name + ".hdf5")
     total_files = len(structure_file_paths)
     processed_files = 0
@@ -406,19 +499,21 @@ def make_frame_dataset(
         if not ((response == "") or (response == "y")):
             print("Aborting.")
             sys.exit()
-    print("Creating dataset...")
     process_paths(
         structure_file_paths=structure_file_paths,
         output_path=output_file_path,
         frame_edge_length=frame_edge_length,
         voxels_per_side=voxels_per_side,
         processes=processes,
+        atom_filter_fn=atom_filter_fn,
+        chain_filter_dict=chain_filter_dict,
         verbosity=verbosity,
     )
-
     return output_file_path
 
 
+# }}}
+# {{{ CLI
 @click.command()
 @click.argument(
     "structure_files", type=click.Path(exists=True, readable=True), nargs=-1
@@ -438,6 +533,14 @@ def make_frame_dataset(
     help=(
         "Name used for the dataset file, the `.hdf5` extension does not need to be "
         "included as it will be appended."
+    ),
+)
+@click.option(
+    "--pieces-filter-file",
+    type=click.Path(),
+    help=(
+        "Path to a Pieces format file used to filter the dataset to specific chains in"
+        "specific files. All other PDB files included in the input will be ignored."
     ),
 )
 @click.option(
@@ -477,6 +580,7 @@ def cli(
     structure_files: t.List[StrOrPath],
     output_folder: str,
     name: str,
+    pieces_filter_file: str,
     frame_edge_length: float,
     voxels_per_side: int,
     processes: int,
@@ -512,18 +616,21 @@ def cli(
 
     So hdf7['1ctf']['A']['58'] would be an array for the voxelized.
     """
-    output_file_path = make_frame_dataset(
+    make_frame_dataset(
         structure_files,
         output_folder,
         name,
         frame_edge_length,
         voxels_per_side,
         default_atom_filter,
+        pieces_filter_file,
         processes,
         verbose,
     )
     return
 
+
+# }}}
 
 if __name__ == "__main__":
     # The cli will be run if this file is invoked directly
