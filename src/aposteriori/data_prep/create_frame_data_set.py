@@ -6,6 +6,7 @@ structure.
 
 from dataclasses import dataclass
 import glob
+import gzip
 import multiprocessing as mp
 import pathlib
 import sys
@@ -184,12 +185,42 @@ def create_frames_from_structure(
     frame_edge_length: float,
     voxels_per_side: int,
     atom_filter_fn: t.Callable[[ampal.Atom], bool],
-    chain_filter_dict: t.Optional[t.Dict[str, t.List[str]]],
+    chain_filter_list: t.Optional[t.List[str]],
+    gzipped: bool,
     verbosity: int,
-):
-    name = structure_path.stem
+) -> t.Tuple[str, ChainDict]:
+    """Creates residue frames for each residue in the structure.
+
+    Parameters
+    ----------
+    structure_path: pathlib.Path
+        Path to pdb file to be processed into frames
+    frame_edge_length: float
+        The length of the edges of the frame.
+    voxels_per_side: int
+        The number of voxels per edge that the cube of space will be converted into i.e.
+        the final cube will be `voxels_per_side`^3. This must be a odd, positive integer
+        so that the CA atom can be placed at the centre of the frame.
+    atom_filter_fn: ampal.Atom -> bool
+        A function used to preprocess structures to remove atoms that are not to be
+        included in the final structure. By default water and side chain atoms will be
+        removed.
+    chain_filter_list: t.Optional[t.List[str]]
+        Chains to be processed.
+    processes: int
+        Number of processes to used to process structure files.
+    gzipped: bool
+        Indicates if structure files are gzipped or not.
+    verbosity: int
+        Level of logging sent to std out.
+    """
+    name = structure_path.name.split(".")[0]
     chain_dict: ChainDict = {}
-    assembly = ampal.load_pdb(str(structure_path))
+    if gzipped:
+        with gzip.open(str(structure_path), "rb") as inf:
+            assembly = ampal.load_pdb(inf.read().decode(), path=False)[0]
+    else:
+        assembly = ampal.load_pdb(str(structure_path))
     total_atoms = len(list(assembly.get_atoms()))
     for atom in assembly.get_atoms():
         if not atom_filter_fn(atom):
@@ -198,9 +229,8 @@ def create_frames_from_structure(
     remaining_atoms = len(list(assembly.get_atoms()))
     print(f"{name}: Filtered {total_atoms-remaining_atoms} of {total_atoms} atoms.")
     for chain in assembly:
-        if chain_filter_dict:
-            if chain.id.upper() not in chain_filter_dict[structure_path.stem.upper()]:
-
+        if chain_filter_list:
+            if chain.id.upper() not in chain_filter_list:
                 if verbosity > 0:
                     print(
                         f"{name}:\tIgnoring chain {chain.id}, not in Pieces filter "
@@ -251,27 +281,34 @@ def process_single_path(
     voxels_per_side: int,
     atom_filter_fn: t.Callable[[ampal.Atom], bool],
     chain_filter_dict: t.Optional[t.Dict[str, t.List[str]]],
-    errors: t.List[str],
+    errors: t.Dict[str, str],
+    gzipped: bool,
     verbosity: int,
 ):
     """Processes a path and puts the results into a queue."""
+    chain_filter_list: t.Optional[t.List[str]]
     result: t.Union[t.Tuple[str, ChainDict], str]
     while True:
         structure_path = path_queue.get()
         print(f"Processing `{structure_path}`...")
         try:
+            if chain_filter_dict:
+                chain_filter_list = chain_filter_dict[structure_path.stem.upper()]
+            else:
+                chain_filter_list = None
             result = create_frames_from_structure(
                 structure_path,
                 frame_edge_length,
                 voxels_per_side,
                 atom_filter_fn,
-                chain_filter_dict,
+                chain_filter_list,
+                gzipped,
                 verbosity,
             )
         except Exception as e:
             result = str(e)
         if isinstance(result, str):
-            errors.append(result)
+            errors[str(structure_path)] = result
         else:
             result_queue.put(result)
 
@@ -315,6 +352,7 @@ def process_paths(
     atom_filter_fn: t.Callable[[ampal.Atom], bool],
     chain_filter_dict: t.Optional[t.Dict[str, t.List[str]]],
     processes: int,
+    gzipped: bool,
     verbosity: int,
 ):
     """Discretizes a list of structures and stores them in a HDF5 object.
@@ -340,6 +378,8 @@ def process_paths(
         chains to be included in the dataset.
     processes: int
         Number of processes to used to process structure files.
+    gzipped: bool
+        Indicates if structure files are gzipped or not.
     verbosity: int
         Level of logging sent to std out.
     """
@@ -354,7 +394,7 @@ def process_paths(
         result_queue = manager.Queue()  # type: ignore
         complete = manager.Value("i", 0)  # type: ignore
         frames = manager.Value("i", 0)  # type: ignore
-        errors = manager.list()  # type: ignore
+        errors = manager.dict()  # type: ignore
         total = len(structure_file_paths)
         workers = [
             mp.Process(
@@ -367,6 +407,7 @@ def process_paths(
                     atom_filter_fn,
                     chain_filter_dict,
                     errors,
+                    gzipped,
                     verbosity,
                 ),
             )
@@ -389,11 +430,11 @@ def process_paths(
             storer.join()
         for proc in all_processes:
             proc.terminate()
-        errors = list(errors)
         if (verbosity > 0) and (errors):
             print(f"There were {len(errors)} errors while creating the dataset:")
-            for error in errors:
-                print(f"\t{error}")
+            for path, error in errors.items():
+                print(f"\t{path}:")
+                print(f"\t\t{error}")
         else:
             print(f"There were {len(errors)} errors while creating the dataset.")
         print(
@@ -412,6 +453,7 @@ def make_frame_dataset(
     atom_filter_fn: t.Callable[[ampal.Atom], bool] = default_atom_filter,
     pieces_filter_file: t.Optional[StrOrPath] = None,
     processes: int = 1,
+    gzipped: bool = False,
     verbosity: int = 1,
     require_confirmation: bool = True,
 ) -> pathlib.Path:
@@ -440,6 +482,8 @@ def make_frame_dataset(
         chains to be included in the dataset.
     processes: int
         Number of processes to used to process structure files.
+    gzipped: bool
+        Indicates if structure files are gzipped or not.
     verbosity: int
         Level of logging sent to std out.
     require_confirmation: bool
@@ -507,6 +551,7 @@ def make_frame_dataset(
         processes=processes,
         atom_filter_fn=atom_filter_fn,
         chain_filter_dict=chain_filter_dict,
+        gzipped=gzipped,
         verbosity=verbosity,
     )
     return output_file_path
@@ -523,7 +568,7 @@ def make_frame_dataset(
     "--output-folder",
     type=click.Path(),
     default=".",
-    help=("Path to folder where output will be written."),
+    help=("Path to folder where output will be written. Default = `.`"),
 )
 @click.option(
     "-n",
@@ -532,7 +577,7 @@ def make_frame_dataset(
     default="frame_dataset",
     help=(
         "Name used for the dataset file, the `.hdf5` extension does not need to be "
-        "included as it will be appended."
+        "included as it will be appended. Default = `frame_dataset`"
     ),
 )
 @click.option(
@@ -548,7 +593,8 @@ def make_frame_dataset(
     type=float,
     default=12.0,
     help=(
-        "Edge length of the cube of space around each residue that will be voxelized."
+        "Edge length of the cube of space around each residue that will be voxelized. "
+        "Default = 12.0."
     ),
 )
 @click.option(
@@ -557,7 +603,7 @@ def make_frame_dataset(
     default=21,
     help=(
         "The number of voxels per side of the frame. This will give a final cube of "
-        "`voxels-per-side`^3."
+        "`voxels-per-side`^3. Default = 21."
     ),
 )
 @click.option(
@@ -565,7 +611,16 @@ def make_frame_dataset(
     "--processes",
     type=int,
     default=1,
-    help=("Number of processes to be used to create the dataset."),
+    help=("Number of processes to be used to create the dataset. Default = 1."),
+)
+@click.option(
+    "-z",
+    "--gzipped",
+    is_flag=True,
+    help=(
+        "If True, this flag indicates that the structure files are gzipped. Default = "
+        "False."
+    ),
 )
 @click.option(
     "-v",
@@ -584,6 +639,7 @@ def cli(
     frame_edge_length: float,
     voxels_per_side: int,
     processes: int,
+    gzipped: bool,
     verbose: int,
 ):
     """Creates a dataset of voxelized amino acid frames.
@@ -605,6 +661,11 @@ def cli(
     `make-frame-dataset pdb_files/**/*.pdb` would include all `.pdb` files in all
     subdirectories of the `pdb_files` directory.
 
+    You can process gzipped pdb files, but the program assumes that the format
+    of the file name is similar to `1mkk.pdb.gz`. If you have more complex
+    requirements than this, we recommend using this library directly from
+    Python rather than through this CLI.
+
     The hdf5 object itself is like a Python dict. The structure is
     simple:
 
@@ -625,6 +686,7 @@ def cli(
         default_atom_filter,
         pieces_filter_file,
         processes,
+        gzipped,
         verbose,
     )
     return
