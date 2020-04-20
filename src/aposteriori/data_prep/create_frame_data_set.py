@@ -341,14 +341,22 @@ def save_results(
                     if verbosity > 0:
                         print(f"{pdb_code}:\tStoring chain {chain_id}...")
                     if chain_id in pdb_group:
-                        print(f"{pdb_code}:\t\tError chain {chain_id} found in dataset, skipping.")
+                        print(
+                            f"{pdb_code}:\t\tError chain {chain_id} found in dataset, "
+                            f"skipping."
+                        )
                         continue
                     chain_group = pdb_group.create_group(chain_id)
                     for res_result in res_results:
                         if verbosity > 1:
-                            print(f"{pdb_code}:\t\tStoring chain {res_result.residue_id}...")
+                            print(
+                                f"{pdb_code}:\t\tStoring chain {res_result.residue_id}..."
+                            )
                         if res_result.residue_id in chain_group:
-                            print(f"{pdb_code}:\t\tError {res_result.residue_id} in chain group, skipping.")
+                            print(
+                                f"{pdb_code}:\t\tError {res_result.residue_id} in "
+                                f"chain group, skipping."
+                            )
                             continue
                         res_dataset = chain_group.create_dataset(
                             res_result.residue_id, data=res_result.data, dtype="u8"
