@@ -321,6 +321,7 @@ def save_results(
     total_files: int,
     complete: mp.Value,
     frames: mp.Value,
+    verbosity: int,
 ):
     """Saves voxelized structures to a hdf5 object."""
     with h5py.File(str(h5_path), "w") as hd5:
@@ -331,16 +332,30 @@ def save_results(
             if result == "BREAK":
                 break
             pdb_code, chain_dict = result
-            pdb_group = hd5.create_group(pdb_code)
-            for chain_id, res_results in chain_dict.items():
-                chain_group = pdb_group.create_group(chain_id)
-                for res_result in res_results:
-                    res_dataset = chain_group.create_dataset(
-                        res_result.residue_id, data=res_result.data, dtype="u8"
-                    )
-                    res_dataset.attrs["label"] = res_result.label
-                    frames.value += 1
-            print(f"{pdb_code}: Finished processing.")
+            print(f"{pdb_code}: Storing results...")
+            if pdb_code in hd5:
+                print(f"{pdb_code}:\t\tError PDB already found in dataset skipping.")
+            else:
+                pdb_group = hd5.create_group(pdb_code)
+                for chain_id, res_results in chain_dict.items():
+                    if verbosity > 0:
+                        print(f"{pdb_code}:\tStoring chain {chain_id}...")
+                    if chain_id in pdb_group:
+                        print(f"{pdb_code}:\t\tError chain {chain_id} found in dataset, skipping.")
+                        continue
+                    chain_group = pdb_group.create_group(chain_id)
+                    for res_result in res_results:
+                        if verbosity > 1:
+                            print(f"{pdb_code}:\t\tStoring chain {res_result.residue_id}...")
+                        if res_result.residue_id in chain_group:
+                            print(f"{pdb_code}:\t\tError {res_result.residue_id} in chain group, skipping.")
+                            continue
+                        res_dataset = chain_group.create_dataset(
+                            res_result.residue_id, data=res_result.data, dtype="u8"
+                        )
+                        res_dataset.attrs["label"] = res_result.label
+                        frames.value += 1
+                print(f"{pdb_code}: Finished processing.")
             complete.value += 1
             print(f"Files processed {complete.value}/{total_files}.")
         print(f"Finished processing files.")
@@ -417,7 +432,7 @@ def process_paths(
         ]
         storer = mp.Process(
             target=save_results,
-            args=(result_queue, output_path, total_paths, complete, frames),
+            args=(result_queue, output_path, total_paths, complete, frames, verbosity),
         )
         all_processes = workers + [storer]
         for proc in all_processes:
