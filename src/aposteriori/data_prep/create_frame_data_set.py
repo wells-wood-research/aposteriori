@@ -561,7 +561,7 @@ def make_frame_dataset(
 # {{{ CLI
 @click.command()
 @click.argument(
-    "structure_files", type=click.Path(exists=True, readable=True), nargs=-1
+    "structure_file_folder", type=click.Path(exists=True, readable=True),
 )
 @click.option(
     "-o",
@@ -579,6 +579,13 @@ def make_frame_dataset(
         "Name used for the dataset file, the `.hdf5` extension does not need to be "
         "included as it will be appended. Default = `frame_dataset`"
     ),
+)
+@click.option(
+    "-e",
+    "--extension",
+    type=str,
+    default="pdb",
+    help=("Extension of structure files to be included. Default = `pdb`."),
 )
 @click.option(
     "--pieces-filter-file",
@@ -623,6 +630,12 @@ def make_frame_dataset(
     ),
 )
 @click.option(
+    "-r",
+    "--recursive",
+    is_flag=True,
+    help=("If True, all files in all subfolders will be processed."),
+)
+@click.option(
     "-v",
     "--verbose",
     count=True,
@@ -632,14 +645,16 @@ def make_frame_dataset(
     ),
 )
 def cli(
-    structure_files: t.List[StrOrPath],
+    structure_file_folder: str,
     output_folder: str,
     name: str,
+    extension: str,
     pieces_filter_file: str,
     frame_edge_length: float,
     voxels_per_side: int,
     processes: int,
     gzipped: bool,
+    recursive: bool,
     verbose: int,
 ):
     """Creates a dataset of voxelized amino acid frames.
@@ -677,6 +692,18 @@ def cli(
 
     So hdf7['1ctf']['A']['58'] would be an array for the voxelized.
     """
+    structure_folder_path = pathlib.Path(structure_file_folder)
+    structure_files: t.List[StrOrPath] = list(
+        structure_folder_path.glob(f"**/*.{extension}")
+        if recursive
+        else structure_folder_path.glob(f"*.{extension}")
+    )
+    if not structure_files:
+        print(
+            f"No structure_files found in `{structure_folder_path}`. Did you mean to "
+            f"use the recursive flag?"
+        )
+        sys.exit()
     make_frame_dataset(
         structure_files,
         output_folder,
