@@ -293,7 +293,9 @@ def process_single_path(
         print(f"Processing `{structure_path}`...")
         try:
             if chain_filter_dict:
-                chain_filter_list = chain_filter_dict[structure_path.stem.upper()]
+                chain_filter_list = chain_filter_dict[
+                    structure_path.name.split(".")[0].upper()
+                ]
             else:
                 chain_filter_list = None
             result = create_frames_from_structure(
@@ -518,7 +520,9 @@ def make_frame_dataset(
     if chain_filter_dict:
         original_path_num = len(structure_file_paths)
         structure_file_paths = [
-            p for p in structure_file_paths if p.stem.upper() in chain_filter_dict
+            p
+            for p in structure_file_paths
+            if p.name.split(".")[0].upper() in chain_filter_dict
         ]
         print(
             f"{original_path_num - len(structure_file_paths)} structure file/s were "
