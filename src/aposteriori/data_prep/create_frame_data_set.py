@@ -584,8 +584,8 @@ def make_frame_dataset(
     "-e",
     "--extension",
     type=str,
-    default="pdb",
-    help=("Extension of structure files to be included. Default = `pdb`."),
+    default=".pdb",
+    help=("Extension of structure files to be included. Default = `.pdb`."),
 )
 @click.option(
     "--pieces-filter-file",
@@ -694,9 +694,9 @@ def cli(
     """
     structure_folder_path = pathlib.Path(structure_file_folder)
     structure_files: t.List[StrOrPath] = list(
-        structure_folder_path.glob(f"**/*.{extension}")
+        structure_folder_path.glob(f"**/*{extension}")
         if recursive
-        else structure_folder_path.glob(f"*.{extension}")
+        else structure_folder_path.glob(f"*{extension}")
     )
     if not structure_files:
         print(
