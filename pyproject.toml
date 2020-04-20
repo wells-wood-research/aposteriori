@@ -6,18 +6,27 @@ authors = ["Wells Wood Lab, University of Edinburgh"]
 license = "MIT"
 
 [tool.poetry.dependencies]
-python = "^3.7"
+python = "~3.7"
 ampal = "^1.4.0"
 numpy = "^1.18.2"
 scikit-learn = "^0.22.2"
 matplotlib = "^3.2.1"
-tensorflow = "1.14.0"
+tensorflow = "~1.14"
+mypy = "^0.770"
+click = "^7.1.1"
+h5py = "^2.10.0"
 
 [tool.poetry.dev-dependencies]
 black = "^19.10b0"
 flake8 = "^3.7.9"
 pytest = "^5.4.1"
 ipython = "^7.13.0"
+jupyter = "^1.0.0"
+mypy = "^0.770"
+hypothesis = "^5.8.0"
+
+[tool.poetry.scripts]
+make-frame-dataset = "aposteriori.data_prep.create_frame_data_set:cli"
 
 [build-system]
 requires = ["poetry>=1.0"]
