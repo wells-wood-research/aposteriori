@@ -23,14 +23,16 @@ def test_create_residue_frame(residue_number):
     focus_residue = assembly[0][residue_number]
 
     # Make sure that residue correctly aligns peptide plane to XY
-    cfds.align_to_residue_plane(focus_residue)
+    cfds.align_to_residue_plane(focus_residue, True)
     assert np.array_equal(
         focus_residue["CA"].array, (0, 0, 0,)
     ), "The CA atom should lie on the origin."
     assert np.isclose(focus_residue["N"].x, 0), "The nitrogen atom should lie on XY."
     assert np.isclose(focus_residue["N"].z, 0), "The nitrogen atom should lie on XY."
     assert np.isclose(focus_residue["C"].z, 0), "The carbon atom should lie on XY."
-
+    assert np.isclose(focus_residue["CB"], (-0.741287356 - 0.53937931 - 1.224287356)), (
+        f"The Cb has not been encoded at position (-0.741287356 - 0.53937931 - 1.224287356)"
+    )
     # Make sure that all relevant atoms are pulled into the frame
     frame_edge_length = 12.0
     voxels_per_side = 21
