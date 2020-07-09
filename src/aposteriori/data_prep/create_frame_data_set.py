@@ -33,7 +33,9 @@ ChainDict = t.Dict[str, t.List[ResidueResult]]
 
 # }}}
 # {{{ Residue Frame Creation
-def align_to_residue_plane(residue: ampal.Residue):
+def align_to_residue_plane(
+    residue: ampal.Residue, encode_cb: bool,
+):
     """Reorients the parent ampal.Assembly that the peptide plane lies on xy.
     
     Notes
@@ -52,6 +54,7 @@ def align_to_residue_plane(residue: ampal.Residue):
     origin = (0, 0, 0)
     unit_y = (0, 1, 0)
     unit_x = (1, 0, 0)
+    avg_cb_position = -0.741287356 - 0.53937931 - 1.224287356
 
     # translate the whole parent assembly so that residue['CA'] lies on the origin
     translation_vector = residue["CA"].array
@@ -69,6 +72,12 @@ def align_to_residue_plane(residue: ampal.Residue):
     # align C with xy plane
     rotation_angle = geometry.dihedral(unit_x, origin, unit_y, residue["C"])
     assembly.rotate(-rotation_angle, unit_y)
+    if encode_cb:
+        cb_atom = ampal.base_ampal.Atom(
+            avg_cb_position, element="C", res_label="CB", parent=residue
+        )
+        residue["CB"] = cb_atom
+
     return
 
 
@@ -102,7 +111,10 @@ def discretize(
 
 
 def create_residue_frame(
-    residue: ampal.Residue, frame_edge_length: float, voxels_per_side: int,
+    residue: ampal.Residue,
+    frame_edge_length: float,
+    voxels_per_side: int,
+    encode_cb: bool,
 ) -> np.ndarray:
     """Creates a discrete representation of a volume of space around a residue.
     
@@ -120,7 +132,9 @@ def create_residue_frame(
         The number of voxels per edge that the cube of space will be converted into i.e.
         the final cube will be `voxels_per_side`^3. This must be a odd, positive integer
         so that the CA atom can be placed at the centre of the frame.
-    
+    encode_cb: bool
+        Whether to encode the Cb at a separate channel of the frame.
+
     Returns
     -------
     frame: ndarray
@@ -142,7 +156,7 @@ def create_residue_frame(
     assembly = residue.parent.parent
     chain = residue.parent
 
-    align_to_residue_plane(residue)
+    align_to_residue_plane(residue, encode_cb)
     # create an empty array for discrete frame
     frame = np.zeros(
         (voxels_per_side, voxels_per_side, voxels_per_side), dtype=np.uint8
@@ -188,6 +202,7 @@ def create_frames_from_structure(
     chain_filter_list: t.Optional[t.List[str]],
     gzipped: bool,
     verbosity: int,
+    encode_cb: bool,
 ) -> t.Tuple[str, ChainDict]:
     """Creates residue frames for each residue in the structure.
 
@@ -247,7 +262,7 @@ def create_frames_from_structure(
         for residue in chain:
             if isinstance(residue, ampal.Residue):
                 array = create_residue_frame(
-                    residue, frame_edge_length, voxels_per_side
+                    residue, frame_edge_length, voxels_per_side, encode_cb,
                 )
                 chain_dict[chain.id].append(
                     ResidueResult(
@@ -284,6 +299,7 @@ def process_single_path(
     errors: t.Dict[str, str],
     gzipped: bool,
     verbosity: int,
+    encode_cb: bool,
 ):
     """Processes a path and puts the results into a queue."""
     chain_filter_list: t.Optional[t.List[str]]
@@ -306,6 +322,7 @@ def process_single_path(
                 chain_filter_list,
                 gzipped,
                 verbosity,
+                encode_cb,
             )
         except Exception as e:
             result = str(e)
@@ -379,6 +396,7 @@ def process_paths(
     processes: int,
     gzipped: bool,
     verbosity: int,
+    encode_cb: bool,
 ):
     """Discretizes a list of structures and stores them in a HDF5 object.
 
@@ -407,6 +425,8 @@ def process_paths(
         Indicates if structure files are gzipped or not.
     verbosity: int
         Level of logging sent to std out.
+    encode_cb: bool
+        Whether to encode the Cb at a separate channel of the frame.
     """
 
     with mp.Manager() as manager:
@@ -434,6 +454,7 @@ def process_paths(
                     errors,
                     gzipped,
                     verbosity,
+                    encode_cb,
                 ),
             )
             for proc_i in range(processes)
@@ -671,6 +692,9 @@ def make_frame_dataset(
         "even more information."
     ),
 )
+@click.option(
+    "-cb", "--encode_cb", type=bool, default=True, help=("#TODO"),
+)
 def cli(
     structure_file_folder: str,
     output_folder: str,
@@ -752,4 +776,3 @@ if __name__ == "__main__":
     # The cli will be run if this file is invoked directly
     # It is also hooked up as a script in `pyproject.toml`
     cli()
-
