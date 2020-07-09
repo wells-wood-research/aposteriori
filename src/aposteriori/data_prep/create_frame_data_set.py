@@ -54,7 +54,7 @@ def align_to_residue_plane(
     origin = (0, 0, 0)
     unit_y = (0, 1, 0)
     unit_x = (1, 0, 0)
-    avg_cb_position = -0.741287356 - 0.53937931 - 1.224287356
+    avg_cb_position = (-0.741287356, - 0.53937931, - 1.224287356)
 
     # translate the whole parent assembly so that residue['CA'] lies on the origin
     translation_vector = residue["CA"].array
@@ -114,7 +114,7 @@ def create_residue_frame(
     residue: ampal.Residue,
     frame_edge_length: float,
     voxels_per_side: int,
-    encode_cb: bool,
+    encode_cb: bool = True,
 ) -> np.ndarray:
     """Creates a discrete representation of a volume of space around a residue.
     
@@ -515,6 +515,7 @@ def make_frame_dataset(
     gzipped: bool = False,
     verbosity: int = 1,
     require_confirmation: bool = True,
+    encode_cb: bool = True,
 ) -> pathlib.Path:
     """Creates a dataset of voxelized amino acid frames.
 
@@ -547,7 +548,8 @@ def make_frame_dataset(
         Level of logging sent to std out.
     require_confirmation: bool
         If True, the user will be prompted to start creating the dataset.
-
+    encode_cb: bool
+        Whether to encode the Cb at a separate channel of the frame.
     Returns
     -------
     output_file_path: pathlib.Path
@@ -614,6 +616,7 @@ def make_frame_dataset(
         chain_filter_dict=chain_filter_dict,
         gzipped=gzipped,
         verbosity=verbosity,
+        encode_cb=encode_cb,
     )
     return output_file_path
 
