@@ -729,6 +729,7 @@ def cli(
     gzipped: bool,
     recursive: bool,
     verbose: int,
+    encode_cb: bool,
 ):
     """Creates a dataset of voxelized amino acid frames.
 
@@ -788,6 +789,7 @@ def cli(
         processes,
         gzipped,
         verbose,
+        encode_cb,
     )
     return
 
