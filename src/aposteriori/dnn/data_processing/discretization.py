@@ -23,21 +23,18 @@ class FrameDiscretizedProteinsSequence(keras.utils.Sequence):
 
       Attributes
       ----------
-      data_set_path : Path Object or str
+      dataset_path : Path Object or str
           Path to structural data
 
-      data_points : array of tuples
-          [(PDB Code, [Ca coordinates], residue identity of Ca, atom encoder)]
+      dataset_map : list of tuples
+        [(pdb_code, chain_id, residue_id, residue_label)]
 
           eg.
-          [
-          '5c7h.pdb1',
-          (55, 61, 41),
-          'LYS',
-           array([0, 6, 7, 8])
+          [...
+          ('1ek9', 'A', '81', 'TRP')
            ...]
 
-      radius : int
+      frame_edge_length : int
           Length of the edge of the frame unit
 
                    +--------+
@@ -49,22 +46,27 @@ class FrameDiscretizedProteinsSequence(keras.utils.Sequence):
                 |        | /
                 |        |/
                 +--------+
-                <-radius->
-          (this isn't actually a radius, but it gives the idea)
+                <- this ->
 
       batch_size : int
-          Number of data_points considered at once
+          Number of data points considered at once
 
       shuffle : bool
-          Shuffling of the order of data_points
-
+          Shuffling of the indices of data points
 
       """
 
-    def __init__(self, data_set_path, data_points, radius, batch_size=32, shuffle=True):
-        self.data_set_path = data_set_path
-        self.data_points = data_points
-        self.radius = radius
+    def __init__(
+        self,
+        dataset_path,
+        dataset_map,
+        frame_edge_length=21,
+        batch_size=32,
+        shuffle=True,
+    ):
+        self.data_set_path = dataset_path
+        self.dataset_map = dataset_map
+        self.radius = frame_edge_length
         self.batch_size = batch_size
         self.shuffle = shuffle
 
@@ -74,7 +76,7 @@ class FrameDiscretizedProteinsSequence(keras.utils.Sequence):
         self.on_epoch_end()
 
     def __len__(self):
-        return int(np.floor(len(self.data_points) / self.batch_size))
+        return int(np.floor(len(self.dataset_map) / self.batch_size))
 
     def __getitem__(self, index):
         dims = (
@@ -85,30 +87,22 @@ class FrameDiscretizedProteinsSequence(keras.utils.Sequence):
         )
         X = np.empty((self.batch_size, *dims), dtype=np.uint8)
         y = np.empty(self.batch_size, dtype="|S3")
-        data_point_batch = self.data_points[
+        data_point_batch = self.dataset_map[
             index * self.batch_size : (index + 1) * self.batch_size
         ]
-        data = []
-        labels = []
+
         with h5py.File(str(self.data_set_path), "r") as dataset:
-            for i, (pdb, indices, label, _) in enumerate(data_point_batch):
-                data = np.pad(dataset[pdb]["data"], self.radius, mode="constant")
-                shape = data.shape
-                indices = [
-                    indices[0] + self.radius,
-                    indices[1] + self.radius,
-                    indices[2] + self.radius,
-                ]
-                region = data[
-                    indices[0] - self.radius : indices[0] + self.radius + 1,
-                    indices[1] - self.radius : indices[1] + self.radius + 1,
-                    indices[2] - self.radius : indices[2] + self.radius + 1,
-                ]
-                shape = region.shape
-                X[i,] = self.data_encoder.transform(
-                    region.flatten().reshape(-1, 1)
+            for (i, pdb_code, chain_id, residue_id, residue_label) in enumerate(
+                data_point_batch
+            ):
+                residue_frame = np.asarray(dataset[pdb_code][chain_id][residue_id][()])
+                shape = residue_frame.shape
+
+                X[i] = self.data_encoder.transform(
+                    residue_frame.flatten().reshape(-1, 1)
                 ).reshape(*shape, -1)
-                y[i,] = label
+                y[i,] = residue_id.attrs["label"]
+
         encoded_y = self.label_encoder.transform(y.reshape(-1, 1))
         return X, encoded_y
 
