@@ -1,24 +1,54 @@
 import pickle
 import numpy as np
 
-from sklearn.preprocessing import OneHotEncoder
-from aposteriori.dnn.config import ATOMIC_NUMBERS, ENCODER_PATH
+from pathlib import Path
+
 from ampal.amino_acids import standard_amino_acids
+from sklearn.preprocessing import OneHotEncoder
 
-# TODO: Refactor order as in PEP8
+from aposteriori.dnn.config import ATOMIC_NUMBERS, ENCODER_PATH
 
 
-def encode_data():
-    # TODO: do not encode if file exist. Add bool to function to optionally
-    #  re-encode
-    data_encoder = OneHotEncoder(categories="auto", sparse=False,
-                                 handle_unknown="ignore")
-    data_encoder.fit(np.array(ATOMIC_NUMBERS).reshape(-1, 1))
+def encode_data(encoder_path: Path = ENCODER_PATH, load_existing_encoder: bool = True):
+    """
 
-    label_encoder = OneHotEncoder(categories="auto", sparse=False)
-    label_encoder.fit(np.array(list(standard_amino_acids.values())).reshape(-1, 1))
+    Parameters
+    ----------
+    encoder_path: Path
+        Path to the encoder. If it exists it loads it for use.
+    load_existing_encoder: bool
+        Whether to load an existing encoder or recreate it.
 
-    with open(ENCODER_PATH, "wb") as f:
-        pickle.dump({"data_encoder": data_encoder, "label_encoder": label_encoder}, f)
+    Returns
+    -------
+    atom_encoder: sklearn.preprocessing._encoders.OneHotEncoder
+        Encodes atoms in frame to one-hot encoded atoms.
 
-    return data_encoder, label_encoder
+    residue_encoder: sklearn.preprocessing._encoders.OneHotEncoder
+        Encodes residues label to one-hot encoded residues. Uses ampal standard
+        residues as guide.
+    """
+
+    if encoder_path.exists() and load_existing_encoder:
+        with open(encoder_path, "rb") as f:
+            encoders = pickle.load(f)
+            atom_encoder = encoders["atom_encoder"]
+            residue_encoder = encoders["residue_encoder"]
+
+    else:
+        atom_encoder = OneHotEncoder(
+            categories="auto", sparse=False, handle_unknown="ignore"
+        )
+        atom_encoder.fit(np.array(ATOMIC_NUMBERS).reshape(-1, 1))
+
+        residue_encoder = OneHotEncoder(categories="auto", sparse=False)
+        residue_encoder.fit(
+            np.array(list(standard_amino_acids.values())).reshape(-1, 1)
+        )
+
+        with open(encoder_path, "wb") as f:
+            pickle.dump(
+                {"atom_encoder": atom_encoder, "residue_encoder": residue_encoder}, f
+            )
+
+    return atom_encoder, residue_encoder
