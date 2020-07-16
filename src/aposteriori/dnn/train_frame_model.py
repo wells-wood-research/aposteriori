@@ -12,7 +12,7 @@ from aposteriori.dnn.analysis.callbacks import (
 )
 
 from aposteriori.dnn.config import *
-from aposteriori.dnn.data_processing.encoder import encode_data
+from aposteriori.dnn.data_processing.tools import encode_data
 from aposteriori.dnn.data_processing.discretization import FrameDiscretizedProteinsSequence
 from aposteriori.dnn.network.frame_model import create_frame_cnn_model
 from aposteriori.dnn.network.visualization.frame import visualize_model_layer
@@ -49,11 +49,11 @@ if __name__ == '__main__':
     # Discretize Structures:
     TRAINING_SET = FrameDiscretizedProteinsSequence(
         data_set_path=PIECES_DATA_PATH, data_points=TRAINING_DATA[0:200],
-        radius=RADIUS, batch_size=BATCH_SIZE, shuffle=SHUFFLE
+        frame_edge_length=RADIUS, batch_size=BATCH_SIZE, shuffle=SHUFFLE
     )
     VALIDATION_SET = FrameDiscretizedProteinsSequence(
         data_set_path=PIECES_DATA_PATH, data_points=VALIDATION_DATA[0:200],
-        radius=RADIUS, batch_size=BATCH_SIZE, shuffle=SHUFFLE
+        frame_edge_length=RADIUS, batch_size=BATCH_SIZE, shuffle=SHUFFLE
     )
     logger.info(f'Training Set: {len(TRAINING_SET)}, Validation Set: {len(VALIDATION_SET)}')
     assert all(tuple(x[(RADIUS, RADIUS, RADIUS)]) == tuple([0, 1, 0, 0, 0]) for x in TRAINING_SET[0][0])

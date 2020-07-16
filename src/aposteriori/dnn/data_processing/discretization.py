@@ -6,7 +6,7 @@ import tensorflow.keras as keras
 from tensorflow.keras.models import load_model
 from ampal.amino_acids import standard_amino_acids
 
-from aposteriori.dnn.data_processing.encoder import encode_data
+from aposteriori.dnn.data_processing.tools import encode_data
 from aposteriori.dnn.config import UNCOMMON_RESIDUE_DICT, UNCOMMON_RES_CONVERSION
 
 
@@ -71,7 +71,7 @@ class FrameDiscretizedProteinsSequence(keras.utils.Sequence):
         self.shuffle = shuffle
 
         # Get encoding for atomic numbers and amino acids:
-        self.data_encoder, self.label_encoder = encode_data()
+        self.atom_encoder, self.residue_encoder = encode_data()
 
         self.on_epoch_end()
 
@@ -83,7 +83,7 @@ class FrameDiscretizedProteinsSequence(keras.utils.Sequence):
             self.radius * 2 + 1,
             self.radius * 2 + 1,
             self.radius * 2 + 1,
-            len(self.data_encoder.categories_[0]),
+            len(self.atom_encoder.categories_[0]),
         )
         X = np.empty((self.batch_size, *dims), dtype=np.uint8)
         y = np.empty(self.batch_size, dtype="|S3")
@@ -92,35 +92,29 @@ class FrameDiscretizedProteinsSequence(keras.utils.Sequence):
         ]
 
         with h5py.File(str(self.dataset_path), "r") as dataset:
-            print(enumerate(data_point_batch))
             for i, (pdb_code, chain_id, residue_id, residue_label) in enumerate(
                 data_point_batch
             ):
                 residue_frame = np.asarray(dataset[pdb_code][chain_id][residue_id][()])
                 shape = residue_frame.shape
 
-                X[i] = self.data_encoder.transform(
+                X[i] = self.atom_encoder.transform(
                     residue_frame.flatten().reshape(-1, 1)
                 ).reshape(*shape, -1)
 
-                assert (
-                    residue_label
-                    == dataset[pdb_code][chain_id][residue_id].attrs["label"]
-                ), f"There was a problem with the label. Expected {residue_label} but got {dataset[pdb_code][chain_id][residue_id].attrs['label']}."
-
-                if residue_label not in self.label_encoder.categories_[0]:
+                if residue_label not in self.residue_encoder.categories_[0]:
                     if residue_label in UNCOMMON_RESIDUE_DICT.keys():
                         print(f"{residue_label} is not a standard residue.")
                         residue_label = UNCOMMON_RESIDUE_DICT[residue_label]
                         print(f"Residue converted to {residue_label}.")
                     else:
                         assert (
-                            residue_label in self.label_encoder.categories_[0]
+                            residue_label in self.residue_encoder.categories_[0]
                         ), f"Expected natural amino acid, but got {residue_label}."
 
                 y[i,] = residue_label
 
-        encoded_y = self.label_encoder.transform(y.reshape(-1, 1))
+        encoded_y = self.residue_encoder.transform(y.reshape(-1, 1))
         return X, encoded_y
 
     def on_epoch_end(self):
