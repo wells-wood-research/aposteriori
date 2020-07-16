@@ -60,11 +60,11 @@ class FrameDiscretizedProteinsSequence(keras.utils.Sequence):
         self,
         dataset_path,
         dataset_map,
-        frame_edge_length=21,
+        frame_edge_length=10,
         batch_size=32,
         shuffle=True,
     ):
-        self.data_set_path = dataset_path
+        self.dataset_path = dataset_path
         self.dataset_map = dataset_map
         self.radius = frame_edge_length
         self.batch_size = batch_size
@@ -91,8 +91,9 @@ class FrameDiscretizedProteinsSequence(keras.utils.Sequence):
             index * self.batch_size : (index + 1) * self.batch_size
         ]
 
-        with h5py.File(str(self.data_set_path), "r") as dataset:
-            for (i, pdb_code, chain_id, residue_id, residue_label) in enumerate(
+        with h5py.File(str(self.dataset_path), "r") as dataset:
+            print(enumerate(data_point_batch))
+            for i, (pdb_code, chain_id, residue_id, residue_label) in enumerate(
                 data_point_batch
             ):
                 residue_frame = np.asarray(dataset[pdb_code][chain_id][residue_id][()])
@@ -101,14 +102,30 @@ class FrameDiscretizedProteinsSequence(keras.utils.Sequence):
                 X[i] = self.data_encoder.transform(
                     residue_frame.flatten().reshape(-1, 1)
                 ).reshape(*shape, -1)
-                y[i,] = residue_id.attrs["label"]
+
+                assert (
+                    residue_label
+                    == dataset[pdb_code][chain_id][residue_id].attrs["label"]
+                ), f"There was a problem with the label. Expected {residue_label} but got {dataset[pdb_code][chain_id][residue_id].attrs['label']}."
+
+                if residue_label not in self.label_encoder.categories_[0]:
+                    if residue_label in UNCOMMON_RESIDUE_DICT.keys():
+                        print(f"{residue_label} is not a standard residue.")
+                        residue_label = UNCOMMON_RESIDUE_DICT[residue_label]
+                        print(f"Residue converted to {residue_label}.")
+                    else:
+                        assert (
+                            residue_label in self.label_encoder.categories_[0]
+                        ), f"Expected natural amino acid, but got {residue_label}."
+
+                y[i,] = residue_label
 
         encoded_y = self.label_encoder.transform(y.reshape(-1, 1))
         return X, encoded_y
 
     def on_epoch_end(self):
         if self.shuffle:
-            random.shuffle(self.data_points)
+            random.shuffle(self.dataset_map)
 
 
 class ContigDiscretizedProteinsSequence(keras.utils.Sequence):
