@@ -1,33 +1,30 @@
 import urllib
 from pathlib import Path
 
+import numpy as np
 import ampal
+import tensorflow as tf
 from ampal import AmpalContainer
 from ampal.protein import Polypeptide
-import aposteriori.data_prep.create_data_set as cds
 from scipy.stats import entropy
-import tensorflow as tf
 
 from aposteriori.dnn.config import (
     ANNOTATED_ENTROPY_PDB_PATH,
     PDB_PATH,
     PDB_CODES,
-    RADIUS,
     FRAME_CONV_MODEL,
-    REBUILD_H5_DATASET,
     PDB_REQUEST_URL,
-    FETCH_PDB,
-    H5_STRUCTURES_PATH,
     SAVE_ANNOTATED_PDB_TO_FILE,
 )
 from aposteriori.dnn.analysis.callbacks import top_3_cat_acc
-from aposteriori.dnn.data_processing.discretization import (
-    make_data_points,
-    FrameDiscretizedProteinsSequence,
-)
+from aposteriori.dnn.data_processing.discretization import FrameDiscretizedProteinsSequence
+from aposteriori.data_prep.create_frame_data_set import make_frame_dataset
+from aposteriori.dnn.data_processing.tools import create_flat_dataset_map
 
 
-def _annotate_ampalobj_with_entropy(ampal_structure, prediction_entropy):
+def _annotate_ampalobj_with_entropy(
+    ampal_structure: ampal.assembly, prediction_entropy: np.ndarray
+):
     """
     Assigns a B-factor to each residue equivalent to the prediction entropy
     of the model.
@@ -53,22 +50,30 @@ def _annotate_ampalobj_with_entropy(ampal_structure, prediction_entropy):
     # Reset B-factor:
     for atom in ampal_structure.get_atoms(ligands=True, inc_alt_states=True):
         atom.tags["bfactor"] = 0
-    # Apply entropy as B-Factor
-    for chain in ampal_structure:
+
+    total_length = 0
+    # Apply entropy as B-Factor to each chain
+    for i, chain in enumerate(ampal_structure):
         # Check if chain is Polypeptide (it might be DNA for example...)
         if isinstance(chain, Polypeptide):
-            assert len(chain) == len(prediction_entropy), (
-                f"Expected a prediction for each residue, but chain is "
-                f"{len(chain)} and entropy is {len(prediction_entropy)}"
-            )
-            for residue, entropy_val in zip(chain, prediction_entropy):
+            total_length += len(chain)
+            for residue, entropy_val in zip(chain, prediction_entropy[total_length:len(chain)]):
                 for atom in residue:
                     atom.tags["bfactor"] = entropy_val
-
+    # Check whether the residues in chains were all covered by a posteriori
+    assert total_length == len(prediction_entropy), (
+        f"Expected a prediction for each residue, but chain is "
+        f"{len(total_length)} and entropy is {len(prediction_entropy)}"
+    )
     return ampal_structure
 
 
-def _fetch_pdb(pdb_code, output_folder=PDB_PATH, pdb_request_url=PDB_REQUEST_URL):
+def _fetch_pdb(
+    pdb_code: str,
+    output_folder: Path = PDB_PATH,
+    pdb_request_url: str = PDB_REQUEST_URL,
+    download_assembly: bool = False,
+):
     """
     Downloads a specific pdb file into a specific folder.
 
@@ -80,67 +85,41 @@ def _fetch_pdb(pdb_code, output_folder=PDB_PATH, pdb_request_url=PDB_REQUEST_URL
         Output path to save the PDB file.
     pdb_request_url : str
         Base URL to download the PDB files.
-
-    """
-    urllib.request.urlretrieve(
-        pdb_request_url + pdb_code + ".pdb1.gz",
-        filename=output_folder / f"{pdb_code}.pdb1.gz",
-    )
-    urllib.request.urlretrieve(
-        pdb_request_url + pdb_code + ".pdb", filename=output_folder / f"{pdb_code}.pdb",
-    )
-
-
-def _create_paths(pdb_code_list, pdb_path=PDB_PATH, fetch_pdb=FETCH_PDB):
-    """
-    Creates paths to the PDB files.
-
-    Parameters
-    ----------
-    pdb_code_list : List of str
-        List of pdb codes to be visualized.
-    pdb_path : Path object
-        Path to pdb folder.
-    fetch_pdb : Bool
-        Whether PDBs need to be downloaded to a folder.
+    download_assembly: bool
+        Whether to download the assembly file of the pdb.
 
     Returns
     -------
-    pdb_path_list : List of Path object
-        List of paths to the pdb files to be analysed.
+    output_path: Path
+        Path to downloaded pdb
+
     """
-    print(f"Fetching pdbs from {PDB_PATH}")
+    if download_assembly:
+        pdb_code_with_extension = f"{pdb_code}.pdb1"
+    else:
+        pdb_code_with_extension = f"{pdb_code}.pdb"
 
-    pdb_path_list = []
-    for pdb_code in pdb_code_list:
+    output_path = output_folder / pdb_code_with_extension
+    urllib.request.urlretrieve(
+        pdb_request_url + pdb_code_with_extension, filename=output_path,
+    )
 
-        # Remove format in pdb codes (just in case...)
-        if "." in pdb_code:
-            pdb_code = pdb_code.split(".")[0]
-        # Download PDB:
-        if fetch_pdb:
-            _fetch_pdb(pdb_code)
-
-        # Append path if structure is available:
-        current_path = pdb_path / (pdb_code + ".pdb1.gz")
-        (pdb_path_list.append(current_path) if current_path.exists() else None)
-
-    return pdb_path_list
+    return output_path
 
 
-def calculate_prediction_entropy(residue_predictions):
+def calculate_prediction_entropy(residue_predictions: list):
     """
     Calculates Shannon Entropy on predictions.
 
     Parameters
     ----------
-    residue_predictions : numpy.ndarray of floats
+    residue_predictions: list[float]
         Residue probabilities for each position in sequence of shape (n, 20)
         where n is the number of residues in sequence.
 
     Returns
     -------
-    entropy_arr : numpy.ndarray of floats
+    entropy_arr: list[float]
         Entropy of prediction for each position in sequence of shape (n,).
     """
     entropy_arr = entropy(residue_predictions, base=2, axis=1)
@@ -148,13 +127,12 @@ def calculate_prediction_entropy(residue_predictions):
 
 
 def visualize_model_entropy(
-    model_path=FRAME_CONV_MODEL,
-    pdb_codes=PDB_CODES,
-    annotated_entropy_pdb_path=ANNOTATED_ENTROPY_PDB_PATH,
-    rebuild_h5_dataset=REBUILD_H5_DATASET,
-    h5_structures_path=H5_STRUCTURES_PATH,
-    radius=RADIUS,
-    save_annotated_pdb_to_file=SAVE_ANNOTATED_PDB_TO_FILE,
+    model_path: Path = FRAME_CONV_MODEL,
+    pdb_codes: list = PDB_CODES,
+    save_annotated_pdb_to_file: bool = SAVE_ANNOTATED_PDB_TO_FILE,
+    output_folder: Path = ANNOTATED_ENTROPY_PDB_PATH,
+    voxels_per_side: int = 21,
+    frame_edge_length: int = 12,
 ):
     """
     Visualize Shannon entropy on pdb structures. PDB codes are downloaded
@@ -162,87 +140,75 @@ def visualize_model_entropy(
 
     Parameters
     ----------
-    model_path : Path
+    model_path: Path
         Path to aposteriori model.
-    pdb_codes : List of str
+    pdb_codes: List of str
         List of PDB codes to be analysed.
-    annotated_entropy_pdb_path : Path
-        Path to save the annotated pdb. Defaults to log file from config.
-    rebuild_h5_dataset : Bool
-        True will create a .h5 file with the data, while False will try to
-        import it from path.
-    h5_structures_path : Path
-        Path to h5 dataset of structures (or where it should be)
-    radius : int
-          Length of the edge of the frame unit
+    save_annotated_pdb_to_file: bool
+        Whether to save the annotated pdb to file.
+    output_folder: Path
+        Path to folder to save the pdb file
+    voxels_per_side: int
+        Number of voxels per side
+    frame_edge_length: int
+        Length of the edge of the frame unit
 
-                   +--------+
-                  /        /|
-                 /        / |
-                +--------+  |
-                |        |  |
-                |        |  +
-                |        | /
-                |        |/
-                +--------+
-                <-radius->
-          (this isn't actually a radius, but it gives the idea)
-    save_annotated_pdb_to_file: Bool
-        True saves the annotated PDB to a file.
+               +--------+
+              /        /|
+             /        / |
+            +--------+  |
+            |        |  |
+            |        |  +
+            |        | /
+            |        |/
+            +--------+
+            <- this ->
 
     Returns
     -------
-    annotated_pdbs: List of Ampal Assemblies
-        List of ampal objects with entropy as B-factor.
+    annotated_pdbs: t.list[ampal.Assembly]
+        Lists of annotated ampal assemblies.
     """
-    pdb_path_list = _create_paths(pdb_codes)
-    # Build an H5 file - No need to rebuild each time, change to
-    # REBUILD_H5_DATASET = false if you already ran this.
-    if rebuild_h5_dataset:
-        # Discretize and load the data:
-        cds.process_paths(pdb_path_list, "v1", 4, h5_structures_path)
+    pdb_paths = [_fetch_pdb(pdb_code) for pdb_code in pdb_codes]
 
-    # Plot error for each of the PDB codes
     annotated_pdbs = []
-    for i in range(len(pdb_codes)):
-        test_structures = make_data_points(
-            h5_structures_path,
-            pdb_codes=[pdb_codes[i] + ".pdb1"],
-            radius=radius,
-            shuffle=False,
+    for pdb_path in pdb_paths:
+        # Voxelise pdb:
+        voxelised_dataset = make_frame_dataset(
+            structure_files=[pdb_path],
+            output_folder=output_folder,
+            name=str(pdb_path),
+            voxels_per_side=voxels_per_side,
+            frame_edge_length=frame_edge_length,
         )
-        test_set = FrameDiscretizedProteinsSequence(
-            data_set_path=h5_structures_path,
-            data_points=test_structures,
-            radius=radius,
+
+        flat_dataset_map = create_flat_dataset_map(voxelised_dataset)
+
+        discretized_dataset = FrameDiscretizedProteinsSequence(
+            dataset_map=flat_dataset_map,
+            dataset_path=voxelised_dataset,
+            frame_edge_length=10,
+            shuffle=False,
             batch_size=1,
-            shuffle=False,
         )
+        # Import model:
         tf.keras.utils.get_custom_objects()["top_3_cat_acc"] = top_3_cat_acc
         frame_model = tf.keras.models.load_model(model_path)
         # Make predictions on loaded data:
-        final_prediction = frame_model.predict_generator(test_set)
+        final_prediction = frame_model.predict_generator(discretized_dataset)
         # Calculate Shannon entropy of predictions:
         entropy_arr = calculate_prediction_entropy(final_prediction)
-
-        # Load PDB Structure:
-        current_pdb_path = pdb_path_list[i].parent / (
-            pdb_path_list[i].stem[0:4] + ".pdb"
-        )
-        curr_pdb_structure = ampal.load_pdb(current_pdb_path)
-
+        # Plot error for each of the PDB codes:
+        curr_pdb_structure = ampal.load_pdb(pdb_path)
         # Add entropy as B-Factor:
         curr_annotated_structure = _annotate_ampalobj_with_entropy(
             curr_pdb_structure, entropy_arr
         )
         # Add annotated structure to list:
         annotated_pdbs.append(curr_annotated_structure)
-
         # Save to a file:
         if save_annotated_pdb_to_file:
-            curr_pdb_out_filename = annotated_entropy_pdb_path / (
-                pdb_path_list[i].stem[0:4] + "_w_entropy.pdb"
-            )
+            curr_pdb_out_filename = str(pdb_path.with_suffix("")) + "_w_entropy.pdb"
             with open(curr_pdb_out_filename, "w") as f:
                 f.write(curr_annotated_structure.pdb)
 
