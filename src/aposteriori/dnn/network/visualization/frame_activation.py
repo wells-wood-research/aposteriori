@@ -7,7 +7,7 @@ from aposteriori.dnn.config import (
     LOCAL_COLOR_MAP,
     PLOT_DIR,
 )
-from aposteriori.dnn.data_processing.encoder import encode_data
+from aposteriori.dnn.data_processing.tools import encode_data
 
 import matplotlib.colors as colors
 import matplotlib.pyplot as plt

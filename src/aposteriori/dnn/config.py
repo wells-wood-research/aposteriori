@@ -14,7 +14,6 @@ PROJECT_ROOT_DIR = pathlib.Path(__file__).parent
 DATA_FOLDER = PROJECT_ROOT_DIR / "data"
 TRAINING_PATH = DATA_FOLDER / "cnos_contig_training_balanced_small.pickle"
 VALIDATION_PATH = DATA_FOLDER / "cnos_contig_validation_balanced_small.pickle"
-# TODO: Use more appropriate names:
 TRAINING_PATH_FRAME = DATA_FOLDER / "cnos_training_balanced_r20.pickle"
 VALIDATION_PATH_FRAME = DATA_FOLDER / "cnos_validation_balanced_r20.pickle"
 # TRAINING_PATH_FRAME = "cnos_training_balanced_r20.pickle"
@@ -26,10 +25,8 @@ VALIDATION_PATH_FRAME = DATA_FOLDER / "cnos_validation_balanced_r20.pickle"
 PIECES_DATA_PATH = DATA_FOLDER / "2-pc90-pieces-high-res.h5"
 
 CURRENT_DATE = datetime.now().strftime("_%Y-%m-%d %H:%M:%S")
-BASE_MODEL = "2c"
-NAME_MODEL = BASE_MODEL + "_prodcnn"
-# TODO: Output folder may need identifier like random number to avoid two
-#  programs running at the same time overriding each others.
+BASE_MODEL = "cnn"
+NAME_MODEL = BASE_MODEL + "_aposteriori"
 OUTPUT_DIR = PROJECT_ROOT_DIR / (NAME_MODEL + CURRENT_DATE)
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 ENCODER_PATH = DATA_FOLDER / "encoders.pickle"
@@ -49,13 +46,12 @@ HISTOGRAM_FREQ = 0
 UPDATE_FREQ = "batch"
 
 # Local configs:
-RADIUS = 20
-EDGE_LENGTH = RADIUS*2 + 1
+VOXELS_PER_SIDE = 21
+FRAME_EDGE_LENGTH = 12
+ATOMIC_NUMBERS = [6, 7, 8, 16]
 UNITS = 11
-ATOMIC_NUMBERS = [0, 6, 7, 8, 16]
-# TODO refactor name below for contig
-INPUT_SHAPE = (UNITS, EDGE_LENGTH, EDGE_LENGTH, EDGE_LENGTH, len(ATOMIC_NUMBERS))
-INPUT_SHAPE_FRAME = (EDGE_LENGTH, EDGE_LENGTH, EDGE_LENGTH, len(ATOMIC_NUMBERS))
+INPUT_SHAPE = (UNITS, VOXELS_PER_SIDE, VOXELS_PER_SIDE, VOXELS_PER_SIDE, len(ATOMIC_NUMBERS))
+INPUT_SHAPE_FRAME = (VOXELS_PER_SIDE, VOXELS_PER_SIDE, VOXELS_PER_SIDE, len(ATOMIC_NUMBERS))
 
 # Network:
 BATCH_SIZE = 64
@@ -79,7 +75,6 @@ ATOM_COLORS = {
 }
 FIG_SIZE = (10, 5)
 COLOR_MAP = plt.cm.rainbow
-LOCAL_COLOR_MAP = True
 ACTIVATION_ALPHA = 0.05
 PLOT_DIR = OUTPUT_DIR / ("activation_plot_" + NAME_MODEL)
 PLOT_DIR.mkdir(parents=True, exist_ok=True)
@@ -94,7 +89,7 @@ if SAVE_ANNOTATED_PDB_TO_FILE:
     ANNOTATED_ENTROPY_PDB_PATH.mkdir(parents=True, exist_ok=True)
 PDB_REQUEST_URL = "https://files.rcsb.org/download/"
 PDB_CODES = ["1qys", "6ct4"]
-H5_STRUCTURES_PATH = DATA_FOLDER / "pdb_voxelised.h5"
+HDF5_STRUCTURES_PATH = DATA_FOLDER / "frame_dataset.hdf5"
 REBUILD_H5_DATASET = True
 FETCH_PDB = True
 
