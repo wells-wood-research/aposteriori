@@ -1,25 +1,33 @@
+import typing as t
+from pathlib import Path
+
+import matplotlib.colors as colors
+import matplotlib.pyplot as plt
+import numpy as np
+import tensorflow as tf
+import sklearn
+from mpl_toolkits.mplot3d import Axes3D
+from scipy.ndimage.interpolation import zoom
+from tensorflow.keras.models import Model
+
 from aposteriori.dnn.config import (
     ACTIVATION_ALPHA,
     ATOM_COLORS,
     COLOR_MAP,
     FIG_SIZE,
     FRAME_CONV_MODEL,
-    LOCAL_COLOR_MAP,
     PLOT_DIR,
 )
 from aposteriori.dnn.data_processing.tools import encode_data
-
-import matplotlib.colors as colors
-import matplotlib.pyplot as plt
-import numpy as np
-import tensorflow as tf
-
-from mpl_toolkits.mplot3d import Axes3D
-from scipy.ndimage.interpolation import zoom
-from tensorflow.keras.models import Model
+from aposteriori.dnn.data_processing.discretization import (
+    FrameDiscretizedProteinsSequence,
+)
+# {{{ Types
+ListOrInt = t.Union[int, t.List[int]]
+# }}}
 
 
-def _normalize_array(data_array):
+def _normalize_array(data_array: np.ndarray) -> np.ndarray:
     """
     Normalizes values of array between 0 - 1.
 
@@ -35,7 +43,9 @@ def _normalize_array(data_array):
     return (data_array - data_array.min()) / (data_array.max() - data_array.min())
 
 
-def _get_frame_atom_coordinates(frame_array, data_encoder):
+def _get_frame_atom_coordinates(
+    frame_array: np.ndarray, data_encoder: sklearn.preprocessing.OneHotEncoder
+) -> dict:
     """
     Returns the coordinates of atoms to be plotted in the frame.
 
@@ -55,8 +65,8 @@ def _get_frame_atom_coordinates(frame_array, data_encoder):
     """
     atom_coords = {}
 
-    # Represent atoms: (skips 0 - empty space)
-    for i in range(1, len(np.unique(data_encoder.categories_[0]))):
+    # Represent atoms:
+    for i in range(0, len(np.unique(data_encoder.categories_[0]))):
         atom_slice = frame_array[:, :, :, i]
         atom_x = []
         atom_y = []
@@ -78,12 +88,12 @@ def _get_frame_atom_coordinates(frame_array, data_encoder):
 
 
 def _visualize_frame(
-    activation_array,
-    frame_array,
-    calculated_residue_probability,
-    real_residue,
-    frame_index,
-    local_color_map=LOCAL_COLOR_MAP,
+    activation_array: np.ndarray,
+    frame_array: np.ndarray,
+    calculated_residue_probability: float,
+    real_residue: str,
+    frame_index: int,
+    local_color_map: bool = False,
 ):
     """
     Visualizes the frame and the activation layer.
@@ -104,7 +114,7 @@ def _visualize_frame(
         Index of frame to be visualized
     local_color_map : bool
         Whether the color map of the activation considers local (True)
-        maximum or overall maxium (False)
+        maximum or overall maxium (False). The local colormap is useful for exploring
 
     """
     # Get data encoder:
@@ -145,7 +155,7 @@ def _visualize_frame(
 
         # Label the real residue present in the position
         if label_encoder.categories_[0][i] == real_residue:
-            is_correct_residue = " Real"
+            is_correct_residue = " Target"
         else:
             is_correct_residue = ""
 
@@ -171,10 +181,10 @@ def _visualize_frame(
         if local_color_map:
             norm = colors.Normalize(vmin=min(w), vmax=max(w))
         else:
-            norm = colors.Normalize(vmin=min(resized_array), vmax=max(resized_array))
+            norm = colors.Normalize(vmin=resized_array.min(), vmax=resized_array.min())
 
         sm = plt.cm.ScalarMappable(cmap=COLOR_MAP, norm=norm)
-        fig.colorbar(sm).set_label("Attention Level (Range 0 - 1)")
+        fig.colorbar(sm).set_label("Attention Level")
 
         # Plot Activation + Set color to intensity:
         ax.scatter(
@@ -201,10 +211,14 @@ def _visualize_frame(
             pad_inches=0.3,
             quality=95,
         )
+        plt.close(fig)
 
 
 def visualize_model_layer(
-    layer_depth, frame_set, frame_index, frame_model_path=FRAME_CONV_MODEL
+    layer_depth: int,
+    frame_set: FrameDiscretizedProteinsSequence,
+    frame_index: ListOrInt,
+    frame_model_path: Path = FRAME_CONV_MODEL,
 ):
     """
     Visualizes specific layers (usually activation) in a frame.
@@ -217,9 +231,8 @@ def visualize_model_layer(
         Class set of frames of voxelised proteins
     frame_index : int or list of int
         Index (or indices) of frames to be visualized
-    frame_model_path : Path or str to frame model
-
-
+    frame_model_path : Path
+        Path to frame model
     """
     frame_model = tf.keras.models.load_model(frame_model_path)
     print(
@@ -240,22 +253,22 @@ def visualize_model_layer(
     # Visualize index if integer
     if isinstance(frame_index, int):
         _visualize_frame(
-            activation_prediction[frame_index],
-            frame_set[frame_index][0][0],
-            final_prediction[frame_index],
-            frame_set.data_points[frame_index][2],
-            frame_index,
+            activation_array=activation_prediction[frame_index],
+            frame_array=frame_set[frame_index][0][0],
+            calculated_residue_probability=final_prediction[frame_index],
+            real_residue=frame_set.dataset_map[frame_index][-1],
+            frame_index=frame_index,
         )
 
     # Visualize multiple indeces if list of integers
     elif isinstance(frame_index, list) and isinstance(frame_index[0], int):
         for i in frame_index:
             _visualize_frame(
-                activation_prediction[i],
-                frame_set[i][0][0],
-                final_prediction[i],
-                frame_set.data_points[i][2],
-                i,
+                activation_array=activation_prediction[i],
+                frame_array=frame_set[i][0][0],
+                calculated_residue_probability=final_prediction[i],
+                real_residue=frame_set.dataset_map[i][-1],
+                frame_index=i,
             )
 
     else:
