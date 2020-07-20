@@ -4,10 +4,9 @@ import random
 import numpy as np
 import tensorflow.keras as keras
 from tensorflow.keras.models import load_model
-from ampal.amino_acids import standard_amino_acids
 
 from aposteriori.dnn.data_processing.tools import encode_data
-from aposteriori.dnn.config import UNCOMMON_RESIDUE_DICT, UNCOMMON_RES_CONVERSION
+from aposteriori.dnn.config import UNCOMMON_RESIDUE_DICT
 
 
 class FrameDiscretizedProteinsSequence(keras.utils.Sequence):
@@ -408,105 +407,3 @@ def annotate_data_with_frame_prediction(data_points, radius, data_set_path, mode
 
     return converted_data_points
 
-
-def make_data_points(
-    data_set_path,
-    pdb_codes,
-    radius,
-    uncommon_res_conversion=UNCOMMON_RES_CONVERSION,
-    shuffle=True,
-):
-    """
-    Creates frames of structures with specified radius and centers the Ca in the middle of the frame.
-
-    Parameters
-    ----------
-    data_set_path : Path
-        Path to h5 dataset of structures
-    pdb_codes : List of str
-        List of PDB codes to be framed.
-    radius : int
-          Length of the edge of the frame unit
-
-                   +--------+
-                  /        /|
-                 /        / |
-                +--------+  |
-                |        |  |
-                |        |  +
-                |        | /
-                |        |/
-                +--------+
-                <-radius->
-          (this isn't actually a radius, but it gives the idea)
-    uncommon_res_conversion : Bool
-        Bool of whether the program will attempt to convert the uncommon
-        residues to a common one.
-    shuffle: bool
-        Shuffling of the order of data_points
-
-    Returns
-    -------
-    data_points : array of tuples
-        [(PDB Code, [Ca coordinates], residue identity of Ca, atom encoder)]
-        eg.
-        [
-        '5c7h.pdb1',
-        (55, 61, 41),
-        'LYS',
-        array([0, 6, 7, 8])
-        ...]
-
-    """
-    data_points = []
-    standard_aas = standard_amino_acids.values()
-    with h5py.File(data_set_path, "r") as data_set:
-        for pdb in pdb_codes:
-
-            group = data_set[pdb]
-
-            #  group['indices'] store the coords of Ca atoms
-            assert len(group["indices"]) == len(
-                group["labels"]
-            ), "Should have same number of indices and labels"
-
-            #  Add padding
-            data = np.pad(data_set[pdb]["data"], radius, mode="constant")
-            for i, l in zip(group["indices"], group["labels"]):
-                # Decode from bytes to unicode
-                decoded_l = l.decode()
-
-                # Check if center aa is standard:
-                if decoded_l not in standard_aas and uncommon_res_conversion:
-                    if decoded_l in UNCOMMON_RESIDUE_DICT.keys():
-                        print(
-                            f"ATTENTION: We are converting {decoded_l} to "
-                            f"{UNCOMMON_RESIDUE_DICT[decoded_l]}. "
-                        )
-                        decoded_l = UNCOMMON_RESIDUE_DICT[decoded_l]
-                    else:
-                        assert decoded_l in standard_aas, (
-                            f"Expected standard residue values, attempted "
-                            f"conversion, but got {decoded_l}."
-                        )
-                elif not uncommon_res_conversion:
-                    assert decoded_l in standard_aas, (
-                        f"Expected standard residue values, but got "
-                        f"{decoded_l}, uncommon residue conversion is off."
-                    )
-
-                # Centers the Ca carbon to create frame with Ca at center
-                padded_indices = (i[0] + radius, i[1] + radius, i[2] + radius)
-                region_data = data[
-                    padded_indices[0] - radius : padded_indices[0] + radius + 1,
-                    padded_indices[1] - radius : padded_indices[1] + radius + 1,
-                    padded_indices[2] - radius : padded_indices[2] + radius + 1,
-                ]
-                #  i is the coordinates of Ca (immutable as tuple)
-                #  Unique classes in voxels
-                data_points.append((pdb, tuple(i), decoded_l, np.unique(region_data)))
-
-        if shuffle:
-            random.shuffle(data_points)
-
-    return data_points

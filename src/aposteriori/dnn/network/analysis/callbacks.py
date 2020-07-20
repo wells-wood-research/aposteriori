@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import matplotlib.colors as colors
 import numpy as np
 
-from aposteriori.dnn.analysis.metrics import make_frame_confusion_matrix, make_contig_confusion_matrix
+from aposteriori.dnn.network.analysis.metrics import make_frame_confusion_matrix, make_contig_confusion_matrix
 from aposteriori.dnn.config import (
     RESIDUES_THREE_TO_ONE_LETTER,
     BLOSUM_DICT,

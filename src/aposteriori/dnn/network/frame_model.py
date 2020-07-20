@@ -17,55 +17,83 @@ from tensorflow.keras import Sequential
 from aposteriori.dnn.config import ACTIVATION_FUNC
 
 
-def create_frame_2d7_model(input_shape):
+def create_frame_2d7_model(input_shape: tuple) -> Sequential:
 
     model = Sequential(
-    [Conv3D(128, 4, 1,
-         padding='same', kernel_initializer='he_normal', use_bias=False,
-         input_shape=input_shape
-     ),
-     BatchNormalization(),
-     Activation("elu"),
-     MaxPooling3D(3, 2, padding='same'),
-     SpatialDropout3D(0.5),
-
-     Conv3D(256, 3, 1,
-         padding='same', kernel_initializer='he_normal', use_bias=False,
-     ),
-     BatchNormalization(),
-     Activation("elu"),
-     MaxPooling3D(3, 2, padding='same'),
-
-     Conv3D(348, 2, 1,
-         padding='same', kernel_initializer='he_normal', use_bias=False,
-     ),
-     BatchNormalization(),
-     Activation("elu"),
-     Conv3D(348, 2, 1,
-         padding='same', kernel_initializer='he_normal', use_bias=False,
-     ),
-     BatchNormalization(),
-     Activation("elu"),
-     Conv3D(256, 2, 1,
-         padding='same', kernel_initializer='he_normal', use_bias=False,
-     ),
-     BatchNormalization(),
-     Activation("elu"),
-
-     Conv3D(20, 1, 1,
-         padding='same', kernel_initializer='he_normal', use_bias=False,
-     ),
-     BatchNormalization(),
-     Activation("elu"),
-     SpatialDropout3D(0.5),
-
-     GlobalAveragePooling3D(),
-     Activation("softmax"),
-    ])
+        [
+            Conv3D(
+                128,
+                4,
+                1,
+                padding="same",
+                kernel_initializer="he_normal",
+                use_bias=False,
+                input_shape=input_shape,
+            ),
+            BatchNormalization(),
+            Activation("elu"),
+            MaxPooling3D(3, 2, padding="same"),
+            SpatialDropout3D(0.5),
+            Conv3D(
+                256,
+                3,
+                1,
+                padding="same",
+                kernel_initializer="he_normal",
+                use_bias=False,
+            ),
+            BatchNormalization(),
+            Activation("elu"),
+            MaxPooling3D(3, 2, padding="same"),
+            Conv3D(
+                348,
+                2,
+                1,
+                padding="same",
+                kernel_initializer="he_normal",
+                use_bias=False,
+            ),
+            BatchNormalization(),
+            Activation("elu"),
+            Conv3D(
+                348,
+                2,
+                1,
+                padding="same",
+                kernel_initializer="he_normal",
+                use_bias=False,
+            ),
+            BatchNormalization(),
+            Activation("elu"),
+            Conv3D(
+                256,
+                2,
+                1,
+                padding="same",
+                kernel_initializer="he_normal",
+                use_bias=False,
+            ),
+            BatchNormalization(),
+            Activation("elu"),
+            Conv3D(
+                20,
+                1,
+                1,
+                padding="same",
+                kernel_initializer="he_normal",
+                use_bias=False,
+            ),
+            BatchNormalization(),
+            Activation("elu"),
+            SpatialDropout3D(0.5),
+            GlobalAveragePooling3D(),
+            Activation("softmax"),
+        ]
+    )
     return model
 
 
-def create_frame_cnn_model(input_shape):
+def create_frame_cnn_model(input_shape: tuple) -> Model:
     """
         :return: Keras model object
     """
@@ -92,7 +120,7 @@ def create_frame_cnn_model(input_shape):
     return model
 
 
-def create_frame_cnn_model2019(input_shape):
+def create_frame_cnn_model2019(input_shape: tuple) -> Model:
     """
         :return: Keras model object
     """

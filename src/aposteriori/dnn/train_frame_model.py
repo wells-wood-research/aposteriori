@@ -3,7 +3,7 @@ import sys
 from sklearn.model_selection import train_test_split
 from tensorflow.keras.utils import plot_model
 
-from aposteriori.dnn.analysis.callbacks import (
+from aposteriori.dnn.network.analysis.callbacks import (
     FrameConfusionPlotter,
     top_3_cat_acc,
     csv_logger,
@@ -20,6 +20,7 @@ from aposteriori.dnn.network.visualization.frame_activation import visualize_mod
 from aposteriori.dnn.network.visualization.prediction_entropy import (
     visualize_model_entropy,
 )
+
 
 def log_uncaught_exceptions(ex_type, ex_value, ex_traceback):
     """ Logs unpredicted exceptions from sys.excepthook """
@@ -92,7 +93,7 @@ if __name__ == "__main__":
     )
     # Visualization of the activation layers:
     if VISUALIZE_ACTIVATION_AFTER_TRAINING:
-        visualize_model_layer(-4, VALIDATION_SET, [5, 8])
+        visualize_model_layer(-4, VALIDATION_SET, [1, 2])
 
     # Visualization of the entropy of predictions:
     if VISUALIZE_ENTROPY_AFTER_TRAINING:

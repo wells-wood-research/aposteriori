@@ -32,6 +32,7 @@ OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 ENCODER_PATH = DATA_FOLDER / "encoders.pickle"
 CONV_LSTM_MODEL = PROJECT_ROOT_DIR / "model" / "conv_lstm.h5"
 FRAME_CONV_MODEL = PROJECT_ROOT_DIR / "model" / "frame_conv.h5"
+FRAME_CONV_MODEL = PROJECT_ROOT_DIR / "model" / "cnn_aposteriori-01-4.77.h5"
 LOG_FILENAME = OUTPUT_DIR / ('logs.txt')
 logging.basicConfig(filename=LOG_FILENAME,
                     format='%(asctime)s - %(name)s - '
@@ -55,7 +56,7 @@ INPUT_SHAPE_FRAME = (VOXELS_PER_SIDE, VOXELS_PER_SIDE, VOXELS_PER_SIDE, len(ATOM
 
 # Network:
 BATCH_SIZE = 64
-EPOCHS = 200
+EPOCHS = 1
 LOSS_FUNC = "categorical_crossentropy"
 ACTIVATION_FUNC = "relu"
 METRICS = ["accuracy", "top_3_cat_acc"]
@@ -75,6 +76,7 @@ ATOM_COLORS = {
 }
 FIG_SIZE = (10, 5)
 COLOR_MAP = plt.cm.rainbow
+LOCAL_COLOR_MAP = False
 ACTIVATION_ALPHA = 0.05
 PLOT_DIR = OUTPUT_DIR / ("activation_plot_" + NAME_MODEL)
 PLOT_DIR.mkdir(parents=True, exist_ok=True)

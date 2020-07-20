@@ -1,30 +1,35 @@
 import urllib
+import typing as t
 from pathlib import Path
 
 import numpy as np
 import ampal
 import tensorflow as tf
-from ampal import AmpalContainer
+
 from ampal.protein import Polypeptide
 from scipy.stats import entropy
 
 from aposteriori.dnn.config import (
     ANNOTATED_ENTROPY_PDB_PATH,
+    FRAME_EDGE_LENGTH,
     PDB_PATH,
     PDB_CODES,
     FRAME_CONV_MODEL,
     PDB_REQUEST_URL,
     SAVE_ANNOTATED_PDB_TO_FILE,
+    VOXELS_PER_SIDE,
 )
-from aposteriori.dnn.analysis.callbacks import top_3_cat_acc
-from aposteriori.dnn.data_processing.discretization import FrameDiscretizedProteinsSequence
+from aposteriori.dnn.network.analysis.callbacks import top_3_cat_acc
+from aposteriori.dnn.data_processing.discretization import (
+    FrameDiscretizedProteinsSequence,
+)
 from aposteriori.data_prep.create_frame_data_set import make_frame_dataset
 from aposteriori.dnn.data_processing.tools import create_flat_dataset_map
 
 
 def _annotate_ampalobj_with_entropy(
     ampal_structure: ampal.assembly, prediction_entropy: np.ndarray
-):
+) -> ampal.assembly:
     """
     Assigns a B-factor to each residue equivalent to the prediction entropy
     of the model.
@@ -44,7 +49,7 @@ def _annotate_ampalobj_with_entropy(
         Ampal structure with modified B-factor values.
     """
     # Deals with structures from NMR as ampal returns Container of Assemblies
-    if isinstance(ampal_structure, AmpalContainer):
+    if isinstance(ampal_structure, ampal.AmpalContainer):
         ampal_structure = ampal_structure[0]
 
     # Reset B-factor:
@@ -57,7 +62,9 @@ def _annotate_ampalobj_with_entropy(
         # Check if chain is Polypeptide (it might be DNA for example...)
         if isinstance(chain, Polypeptide):
             total_length += len(chain)
-            for residue, entropy_val in zip(chain, prediction_entropy[total_length:len(chain)]):
+            for residue, entropy_val in zip(
+                chain, prediction_entropy[total_length : len(chain)]
+            ):
                 for atom in residue:
                     atom.tags["bfactor"] = entropy_val
     # Check whether the residues in chains were all covered by a posteriori
@@ -73,7 +80,7 @@ def _fetch_pdb(
     output_folder: Path = PDB_PATH,
     pdb_request_url: str = PDB_REQUEST_URL,
     download_assembly: bool = False,
-):
+) -> Path:
     """
     Downloads a specific pdb file into a specific folder.
 
@@ -107,7 +114,7 @@ def _fetch_pdb(
     return output_path
 
 
-def calculate_prediction_entropy(residue_predictions: list):
+def calculate_prediction_entropy(residue_predictions: list) -> list:
     """
     Calculates Shannon Entropy on predictions.
 
@@ -131,9 +138,9 @@ def visualize_model_entropy(
     pdb_codes: list = PDB_CODES,
     save_annotated_pdb_to_file: bool = SAVE_ANNOTATED_PDB_TO_FILE,
     output_folder: Path = ANNOTATED_ENTROPY_PDB_PATH,
-    voxels_per_side: int = 21,
-    frame_edge_length: int = 12,
-):
+    voxels_per_side: int = VOXELS_PER_SIDE,
+    frame_edge_length: int = FRAME_EDGE_LENGTH,
+) -> t.List[ampal.Assembly]:
     """
     Visualize Shannon entropy on pdb structures. PDB codes are downloaded
     and predicted by a model specified in `model_path`.
@@ -151,7 +158,7 @@ def visualize_model_entropy(
     voxels_per_side: int
         Number of voxels per side
     frame_edge_length: int
-        Length of the edge of the frame unit
+        Length of the edge of the frame unit in Angstroms.
 
                +--------+
               /        /|
@@ -208,8 +215,10 @@ def visualize_model_entropy(
         annotated_pdbs.append(curr_annotated_structure)
         # Save to a file:
         if save_annotated_pdb_to_file:
-            curr_pdb_out_filename = str(pdb_path.with_suffix("")) + "_w_entropy.pdb"
-            with open(curr_pdb_out_filename, "w") as f:
+            curr_pdb_filename = output_folder / (
+                pdb_path.with_suffix("").stem + "_w_entropy.pdb"
+            )
+            with open(curr_pdb_filename, "w") as f:
                 f.write(curr_annotated_structure.pdb)
 
     return annotated_pdbs

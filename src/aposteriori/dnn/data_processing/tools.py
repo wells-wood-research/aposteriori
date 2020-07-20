@@ -140,11 +140,11 @@ def balance_dataset(flat_dataset_map: t.List[t.Tuple]):
         min(counted_residue_in_dataset, key=counted_residue_in_dataset.get)
     ]
     balanced_dataset_map = []
+    # Sort dataset by residue:
+    flat_dataset_map = sorted(flat_dataset_map, key=itemgetter(3))
     for residue in standard_residues:
-        # Sort dataset by residue:
-        flat_dataset_map = sorted(flat_dataset_map, key=itemgetter(3))
         assert (
-            residue == flat_dataset_map[0][-1]
+                residue == flat_dataset_map[0][-1]
         ), f"Expected {residue} residue but got {flat_dataset_map[0][-1]}"
         # Append relevant residue:
         balanced_dataset_map += flat_dataset_map[:max_res_num]
@@ -152,7 +152,7 @@ def balance_dataset(flat_dataset_map: t.List[t.Tuple]):
         del flat_dataset_map[: counted_residue_in_dataset[flat_dataset_map[0][-1]]]
 
     assert (
-        len(balanced_dataset_map) == 20 * max_res_num
+            len(balanced_dataset_map) == 20 * max_res_num
     ), f"Expected balanced dataset to be {20 * max_res_num} but got {len(balanced_dataset_map)}"
 
     return balanced_dataset_map
