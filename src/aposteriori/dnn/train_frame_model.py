@@ -51,10 +51,12 @@ if __name__ == "__main__":
     TRAINING_SET = FrameDiscretizedProteinsSequence(
         dataset_map=training_data,
         dataset_path=HDF5_STRUCTURES_PATH,
+        voxels_per_side=VOXELS_PER_SIDE,
     )
     VALIDATION_SET = FrameDiscretizedProteinsSequence(
         dataset_map=training_data,
         dataset_path=HDF5_STRUCTURES_PATH,
+        voxels_per_side=VOXELS_PER_SIDE,
     )
     logger.info(
         f"Training Set: {len(TRAINING_SET)}, Validation Set: {len(VALIDATION_SET)}"

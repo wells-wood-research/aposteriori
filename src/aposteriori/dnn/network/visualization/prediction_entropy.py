@@ -194,7 +194,7 @@ def visualize_model_entropy(
         discretized_dataset = FrameDiscretizedProteinsSequence(
             dataset_map=flat_dataset_map,
             dataset_path=voxelised_dataset,
-            frame_edge_length=10,
+            voxels_per_side=voxels_per_side,
             shuffle=False,
             batch_size=1,
         )

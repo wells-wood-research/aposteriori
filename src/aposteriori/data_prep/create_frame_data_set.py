@@ -239,6 +239,9 @@ def create_frames_from_structure(
             assembly = ampal.load_pdb(inf.read().decode(), path=False)[0]
     else:
         assembly = ampal.load_pdb(str(structure_path))
+    # Deals with structures from NMR as ampal returns Container of Assemblies
+    if isinstance(assembly, ampal.AmpalContainer):
+        assembly = assembly[0]
     total_atoms = len(list(assembly.get_atoms()))
     for atom in assembly.get_atoms():
         if not atom_filter_fn(atom):
@@ -665,7 +668,7 @@ def make_frame_dataset(
     default=12.0,
     help=(
         "Edge length of the cube of space around each residue that will be voxelized. "
-        "Default = 12.0."
+        "Default = 12.0 Angstroms."
     ),
 )
 @click.option(
@@ -714,7 +717,7 @@ def make_frame_dataset(
     type=bool,
     default=True,
     help=(
-        "Encode the Cb at an average position (-0.741287356 - 0.53937931 - 1.224287356), even for Glycine residues."
+        "Encode the Cb at an average position (-0.741287356, -0.53937931, -1.224287356), even for Glycine residues."
     ),
 )
 def cli(

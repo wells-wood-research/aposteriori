@@ -1,5 +1,7 @@
 import h5py
+from pathlib import Path
 import random
+import typing as t
 
 import numpy as np
 import tensorflow.keras as keras
@@ -33,7 +35,7 @@ class FrameDiscretizedProteinsSequence(keras.utils.Sequence):
           ('1ek9', 'A', '81', 'TRP')
            ...]
 
-      frame_edge_length : int
+      voxels_per_side : int
           Length of the edge of the frame unit
 
                    +--------+
@@ -57,15 +59,15 @@ class FrameDiscretizedProteinsSequence(keras.utils.Sequence):
 
     def __init__(
         self,
-        dataset_path,
-        dataset_map,
-        frame_edge_length=10,
-        batch_size=32,
-        shuffle=True,
+        dataset_path: Path,
+        dataset_map: t.List[tuple],
+        voxels_per_side: int,
+        batch_size: int = 32,
+        shuffle: bool = True,
     ):
         self.dataset_path = dataset_path
         self.dataset_map = dataset_map
-        self.radius = frame_edge_length
+        self.voxels_per_side = voxels_per_side
         self.batch_size = batch_size
         self.shuffle = shuffle
 
@@ -79,9 +81,9 @@ class FrameDiscretizedProteinsSequence(keras.utils.Sequence):
 
     def __getitem__(self, index):
         dims = (
-            self.radius * 2 + 1,
-            self.radius * 2 + 1,
-            self.radius * 2 + 1,
+            self.voxels_per_side,
+            self.voxels_per_side,
+            self.voxels_per_side,
             len(self.atom_encoder.categories_[0]),
         )
         X = np.empty((self.batch_size, *dims), dtype=np.uint8)
@@ -406,4 +408,3 @@ def annotate_data_with_frame_prediction(data_points, radius, data_set_path, mode
             converted_data_points.append((pdb, predictions, encoded_label))
 
     return converted_data_points
-
