@@ -128,11 +128,12 @@ def balance_dataset(flat_dataset_map: t.List[t.Tuple]):
         [... (pdb_code, chain_id, residue_id,  residue_label) ...].
         This is balanced by undersampling.
     """
-    # Balancing the dataset:
-    shuffle(flat_dataset_map)
+    flat_dataset_map_copy = np.copy(flat_dataset_map)
+    # Randomize appearance of frames
+    shuffle(flat_dataset_map_copy)
     standard_residues = sorted(list(standard_amino_acids.values()))
     # Count all residues in dataset:
-    all_residues_in_dataset = [res[-1] for res in flat_dataset_map]
+    all_residues_in_dataset = [res[-1] for res in flat_dataset_map_copy]
     # Count all residues and calculate the maximum number of residue per class:
     counted_residue_in_dataset = Counter(all_residues_in_dataset)
     # Count how many residues to extract per class:
@@ -141,18 +142,22 @@ def balance_dataset(flat_dataset_map: t.List[t.Tuple]):
     ]
     balanced_dataset_map = []
     # Sort dataset by residue:
-    flat_dataset_map = sorted(flat_dataset_map, key=itemgetter(3))
+    flat_dataset_map_copy = sorted(flat_dataset_map_copy, key=itemgetter(3))
     for residue in standard_residues:
         assert (
-                residue == flat_dataset_map[0][-1]
-        ), f"Expected {residue} residue but got {flat_dataset_map[0][-1]}"
-        # Append relevant residue:
-        balanced_dataset_map += flat_dataset_map[:max_res_num]
+                residue == flat_dataset_map_copy[0][-1]
+        ), f"Expected {residue} residue but got {flat_dataset_map_copy[0][-1]}"
+        # Extract and append relevant residue:
+        balanced_dataset_map += flat_dataset_map_copy[:max_res_num]
         # Delete residue class from dataset:
-        del flat_dataset_map[: counted_residue_in_dataset[flat_dataset_map[0][-1]]]
+        del flat_dataset_map_copy[:counted_residue_in_dataset[flat_dataset_map_copy[0][-1]]]
 
+    # Check whether the total number of residues is correct:
     assert (
             len(balanced_dataset_map) == 20 * max_res_num
     ), f"Expected balanced dataset to be {20 * max_res_num} but got {len(balanced_dataset_map)}"
+    # Check whether the number of residues per class is correct:
+    all_balanced_residues = [res[-1] for res in balanced_dataset_map]
+    assert (Counter(list(standard_amino_acids.values())*max_res_num) == Counter(all_balanced_residues))
 
     return balanced_dataset_map
