@@ -66,7 +66,7 @@ def create_flat_dataset_map(frame_dataset: Path):
 
     Parameters
     ----------
-    dataset_file: Path
+    frame_dataset: Path
         Path to the .h5 dataset with the following structure.
         └─[pdb_code] Contains a number of subgroups, one for each chain.
           └─[chain_id] Contains a number of subgroups, one for each residue.

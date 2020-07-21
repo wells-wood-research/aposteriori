@@ -55,7 +55,8 @@ def align_to_residue_plane(
     origin = (0, 0, 0)
     unit_y = (0, 1, 0)
     unit_x = (1, 0, 0)
-    avg_cb_position = (-0.741287356, - 0.53937931, - 1.224287356)
+    avg_cb_position = (-0.741287356, -0.53937931, -1.224287356)
+    # This was calculated by averaging the coordinates of the aligned frames for the 1QYS protein
 
     # translate the whole parent assembly so that residue['CA'] lies on the origin
     translation_vector = residue["CA"].array
@@ -134,7 +135,7 @@ def create_residue_frame(
         the final cube will be `voxels_per_side`^3. This must be a odd, positive integer
         so that the CA atom can be placed at the centre of the frame.
     encode_cb: bool
-        Whether to encode the Cb at a separate channel of the frame.
+        Whether to encode the Cb at an average position in the frame.
 
     Returns
     -------
@@ -217,20 +218,18 @@ def create_frames_from_structure(
         The number of voxels per edge that the cube of space will be converted into i.e.
         the final cube will be `voxels_per_side`^3. This must be a odd, positive integer
         so that the CA atom can be placed at the centre of the frame.
-    `atom_filter_fn`: ampal.Atom -> bool
+    atom_filter_fn: ampal.Atom -> bool
         A function used to preprocess structures to remove atoms that are not to be
         included in the final structure. By default water and side chain atoms will be
         removed.
     chain_filter_list: t.Optional[t.List[str]]
         Chains to be processed.
-    processes: int
-        Number of processes to used to process structure files.
     gzipped: bool
         Indicates if structure files are gzipped or not.
     verbosity: int
         Level of logging sent to std out.
-    encode_cb: bool,
-        Whether to encode the Cb at a separate channel of the frame. If
+    encode_cb: bool
+        Whether to encode the Cb at an average position in the frame. If
         True, it will not be filtered by the `atom_filter_fn`.
     """
     name = structure_path.name.split(".")[0]
@@ -297,6 +296,7 @@ def default_atom_filter(atom: ampal.Atom) -> bool:
     else:
         return False
 
+
 def backbone_only_atom_filter(atom: ampal.Atom) -> bool:
     """Filters for all heavy protein backbone atoms."""
     backbone_atoms = ("N", "CA", "C", "O")
@@ -306,6 +306,7 @@ def backbone_only_atom_filter(atom: ampal.Atom) -> bool:
         return True
     else:
         return False
+
 
 def process_single_path(
     path_queue: mp.SimpleQueue,
@@ -434,9 +435,8 @@ def process_paths(
         A function used to preprocess structures to remove atoms that are not to be
         included in the final structure. By default water and side chain atoms will be
         removed.
-    pieces_filter_file: Optional[StrOrPath]
-        A path to a Pieces file that will be used to filter the input files and specify
-        chains to be included in the dataset.
+    chain_filter_dict: t.Optional[t.Dict[str, t.List[str]]]
+        Chains to be selected from the PDB file.
     processes: int
         Number of processes to used to process structure files.
     gzipped: bool
@@ -444,7 +444,7 @@ def process_paths(
     verbosity: int
         Level of logging sent to std out.
     encode_cb: bool
-        Whether to encode the Cb at a separate channel of the frame.
+        Whether to encode the Cb at an average position in the frame.
     """
 
     with mp.Manager() as manager:
@@ -554,7 +554,8 @@ def make_frame_dataset(
     require_confirmation: bool
         If True, the user will be prompted to start creating the dataset.
     encode_cb: bool
-        Whether to encode the Cb at a separate channel of the frame.
+        Whether to encode the Cb at an average position in the frame.
+
     Returns
     -------
     output_file_path: pathlib.Path
@@ -719,7 +720,7 @@ def make_frame_dataset(
     type=bool,
     default=True,
     help=(
-        "Encode the Cb at an average position (-0.741287356, -0.53937931, -1.224287356), even for Glycine residues."
+        "Encode the Cb at an average position (-0.741287356, -0.53937931, -1.224287356) in the aligned frame, even for Glycine residues."
     ),
 )
 def cli(
