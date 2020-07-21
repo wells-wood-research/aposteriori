@@ -4,6 +4,7 @@ import numpy as np
 import typing as t
 from operator import itemgetter
 import warnings
+import copy
 
 from ampal.amino_acids import standard_amino_acids
 from collections import Counter
@@ -128,7 +129,7 @@ def balance_dataset(flat_dataset_map: t.List[t.Tuple]):
         [... (pdb_code, chain_id, residue_id,  residue_label) ...].
         This is balanced by undersampling.
     """
-    flat_dataset_map_copy = np.copy(flat_dataset_map)
+    flat_dataset_map_copy = copy.copy(flat_dataset_map)
     # Randomize appearance of frames
     shuffle(flat_dataset_map_copy)
     standard_residues = sorted(list(standard_amino_acids.values()))

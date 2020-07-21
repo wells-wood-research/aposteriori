@@ -42,7 +42,10 @@ if __name__ == "__main__":
     )
 
     flat_dataset_map = create_flat_dataset_map(HDF5_STRUCTURES_PATH)
+    logger.info(f"Started with {len(flat_dataset_map)} frames.\n")
     flat_dataset_map = balance_dataset(flat_dataset_map)
+    logger.info(f"Balanced to {len(flat_dataset_map)} frames.\n")
+
     # Splitting the dataset
     training_data, validation_data = train_test_split(
         flat_dataset_map, test_size=0.20, random_state=42
