@@ -12,6 +12,7 @@ import pathlib
 import sys
 import time
 import typing as t
+import warnings
 
 import ampal
 import ampal.geometry as geometry
@@ -241,6 +242,7 @@ def create_frames_from_structure(
         assembly = ampal.load_pdb(str(structure_path))
     # Deals with structures from NMR as ampal returns Container of Assemblies
     if isinstance(assembly, ampal.AmpalContainer):
+        warnings.warn(f"Selecting the first state from the NMR structure {assembly.id}")
         assembly = assembly[0]
     total_atoms = len(list(assembly.get_atoms()))
     for atom in assembly.get_atoms():

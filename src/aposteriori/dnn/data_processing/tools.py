@@ -3,6 +3,7 @@ import h5py
 import numpy as np
 import typing as t
 from operator import itemgetter
+import warnings
 
 from ampal.amino_acids import standard_amino_acids
 from collections import Counter
@@ -94,12 +95,11 @@ def create_flat_dataset_map(frame_dataset: Path):
                         pass
                     # If uncommon, attempt conversion of label
                     elif residue_label in UNCOMMON_RESIDUE_DICT.keys():
-                        print(f"{residue_label} is not a standard residue.")
+                        warnings.warn(f"{residue_label} is not a standard residue.")
                         # Convert residue to common residue
                         residue_label = UNCOMMON_RESIDUE_DICT[residue_label]
-                        print(f"Residue converted to {residue_label}.")
+                        warnings.warn(f"Residue converted to {residue_label}.")
                     else:
-                        print("Warning message")
                         assert (
                             residue_label in standard_residues
                         ), f"Expected natural amino acid, but got {residue_label}."
