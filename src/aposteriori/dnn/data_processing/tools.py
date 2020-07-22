@@ -132,27 +132,27 @@ def balance_dataset(flat_dataset_map: t.List[t.Tuple]):
     flat_dataset_map_copy = copy.copy(flat_dataset_map)
     # Randomize appearance of frames
     shuffle(flat_dataset_map_copy)
-    standard_residues = sorted(list(standard_amino_acids.values()))
-    # Count all residues in dataset:
-    all_residues_in_dataset = [res[-1] for res in flat_dataset_map_copy]
+    # List all resiudes:
+    standard_residues = list(standard_amino_acids.values())
+    # Extract residues and append to a dictionary using the residue as key:
+    dataset_dict = {r:[] for r in standard_residues}
+
+    all_residues_in_dataset = []
+    for res_map in flat_dataset_map_copy:
+        res = res_map[-1]
+        dataset_dict[res].append(res_map)
+        all_residues_in_dataset.append(res)
     # Count all residues and calculate the maximum number of residue per class:
     counted_residue_in_dataset = Counter(all_residues_in_dataset)
     # Count how many residues to extract per class:
     max_res_num = counted_residue_in_dataset[
         min(counted_residue_in_dataset, key=counted_residue_in_dataset.get)
     ]
+    # Extract residue from dataset:
     balanced_dataset_map = []
-    # Sort dataset by residue:
-    flat_dataset_map_copy = sorted(flat_dataset_map_copy, key=itemgetter(3))
     for residue in standard_residues:
-        assert (
-                residue == flat_dataset_map_copy[0][-1]
-        ), f"Expected {residue} residue but got {flat_dataset_map_copy[0][-1]}"
         # Extract and append relevant residue:
-        balanced_dataset_map += flat_dataset_map_copy[:max_res_num]
-        # Delete residue class from dataset:
-        del flat_dataset_map_copy[:counted_residue_in_dataset[flat_dataset_map_copy[0][-1]]]
-
+        balanced_dataset_map += dataset_dict[residue][:max_res_num]
     # Check whether the total number of residues is correct:
     assert (
             len(balanced_dataset_map) == 20 * max_res_num
