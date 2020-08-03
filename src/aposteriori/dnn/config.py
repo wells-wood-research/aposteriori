@@ -23,16 +23,15 @@ VALIDATION_PATH_FRAME = DATA_FOLDER / "cnos_validation_balanced_r20.pickle"
 #     "../../structural_data/dnn_data/2-pc90-pieces-high-res.h5"
 # )
 PIECES_DATA_PATH = DATA_FOLDER / "2-pc90-pieces-high-res.h5"
+PIECES_DATA_PATH = DATA_FOLDER / "frame_dataset.h5"
 
 CURRENT_DATE = datetime.now().strftime("_%Y-%m-%d %H:%M:%S")
 BASE_MODEL = "cnn"
 NAME_MODEL = BASE_MODEL + "_aposteriori"
 OUTPUT_DIR = PROJECT_ROOT_DIR / (NAME_MODEL + CURRENT_DATE)
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-ENCODER_PATH = DATA_FOLDER / "encoders.pickle"
 CONV_LSTM_MODEL = PROJECT_ROOT_DIR / "model" / "conv_lstm.h5"
 FRAME_CONV_MODEL = PROJECT_ROOT_DIR / "model" / "frame_conv.h5"
-FRAME_CONV_MODEL = PROJECT_ROOT_DIR / "model" / "cnn_aposteriori-01-4.77.h5"
 LOG_FILENAME = OUTPUT_DIR / ('logs.txt')
 logging.basicConfig(filename=LOG_FILENAME,
                     format='%(asctime)s - %(name)s - '
@@ -49,7 +48,8 @@ UPDATE_FREQ = "batch"
 # Local configs:
 VOXELS_PER_SIDE = 21
 FRAME_EDGE_LENGTH = 12
-ATOMIC_NUMBERS = [6, 7, 8, 16]
+# TODO: This should be obtained from the data file:
+ATOMIC_NUMBERS = [6, 7, 8]
 UNITS = 11
 INPUT_SHAPE = (UNITS, VOXELS_PER_SIDE, VOXELS_PER_SIDE, VOXELS_PER_SIDE, len(ATOMIC_NUMBERS))
 INPUT_SHAPE_FRAME = (VOXELS_PER_SIDE, VOXELS_PER_SIDE, VOXELS_PER_SIDE, len(ATOMIC_NUMBERS))
@@ -64,15 +64,17 @@ OPTIMIZER = Adam()
 SHUFFLE = True
 WORKERS = 8
 MULTIPROCESSING = True
+BALANCE_RESIDUES = True
 
 # Activation Layer Visualization:
 VISUALIZE_ACTIVATION_AFTER_TRAINING = True
 ATOM_COLORS = {
     # Atomic number : Color
-    6: "black",  # Carbon
-    7: "blue",  # Nitrogen
-    8: "red",  # Oxygen
-    16: "orange",  # Sulphur
+    0: "black",  # Carbon
+    1: "blue",  # Nitrogen
+    2: "red",  # Oxygen
+    3: "orange",  # +1
+    4: "green"  # +2
 }
 FIG_SIZE = (10, 5)
 COLOR_MAP = plt.cm.rainbow

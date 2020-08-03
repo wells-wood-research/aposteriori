@@ -5,7 +5,7 @@ import matplotlib.colors as colors
 import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf
-import sklearn
+from ampal.amino_acids import standard_amino_acids
 from mpl_toolkits.mplot3d import Axes3D
 from scipy.ndimage.interpolation import zoom
 from tensorflow.keras.models import Model
@@ -18,10 +18,10 @@ from aposteriori.dnn.config import (
     FRAME_CONV_MODEL,
     PLOT_DIR,
 )
-from aposteriori.dnn.data_processing.tools import encode_data
 from aposteriori.dnn.data_processing.discretization import (
     FrameDiscretizedProteinsSequence,
 )
+
 # {{{ Types
 ListOrInt = t.Union[int, t.List[int]]
 # }}}
@@ -44,8 +44,8 @@ def _normalize_array(data_array: np.ndarray) -> np.ndarray:
 
 
 def _get_frame_atom_coordinates(
-    frame_array: np.ndarray, data_encoder: sklearn.preprocessing.OneHotEncoder
-) -> dict:
+    frame_array: np.ndarray,
+) -> t.Dict[int, t.Tuple[float, float, float]]:
     """
     Returns the coordinates of atoms to be plotted in the frame.
 
@@ -54,19 +54,17 @@ def _get_frame_atom_coordinates(
     frame_array : numpy.ndarray
         Array (frame_radius_x, frame_radius_y, frame_radius_z,
         atomic_numbers) where xyz coordinates of each atoms are stored
-    data_encoder : sklearn.preprocessing.OneHotEncoder
-        Atom encoder used to extract xyz coordinates of specific atom in voxel
 
     Returns
     -------
-    atom_coords : dict
-        Dictionary of atoms to coords {Atomic Number : [ [X], [Y], [Z] ]}
+    atom_coords : t.Dict[int, t.Tuple[float, float, float]]
+        Dictionary of atoms to coords {Atomic Channel : [ [X], [Y], [Z] ]}
 
     """
     atom_coords = {}
 
     # Represent atoms:
-    for i in range(0, len(np.unique(data_encoder.categories_[0]))):
+    for i in range(frame_array.shape[-1]):
         atom_slice = frame_array[:, :, :, i]
         atom_x = []
         atom_y = []
@@ -82,7 +80,7 @@ def _get_frame_atom_coordinates(
                         atom_y.append(iy)
                         atom_z.append(iz)
 
-        atom_coords[data_encoder.categories_[0][i]] = [atom_x, atom_y, atom_z]
+        atom_coords[i] = [atom_x, atom_y, atom_z]
 
     return atom_coords
 
@@ -102,38 +100,34 @@ def _visualize_frame(
     ----------
     activation_array : numpy.ndarray
         Result of frame after activation layer (nx, ny, nz, w) where w is the
-        intensity of activation and n represents spatial coordinates
+        intensity of activation and n represents spatial coordinates.
     frame_array : numpy.ndarray
         Frame array (frame_radius_x, frame_radius_y, frame_radius_z,
-        atomic_numbers) where xyz coordinates of each atoms are stored
+        atomic_numbers) where xyz coordinates of each atoms are stored.
     calculated_residue_probability : float
-        Probability output from model for a given frame
+        Probability output from model for a given frame.
     real_residue : str
-        Identity of the real residue in frame
+        Identity of the real residue in frame.
     frame_index : int
-        Index of frame to be visualized
+        Index of frame to be visualized.
     local_color_map : bool
         Whether the color map of the activation considers local (True)
-        maximum or overall maxium (False). The local colormap is useful for exploring
+        maximum or overall maxium (False). The local colormap is useful for exploring.
 
     """
-    # Get data encoder:
-    data_encoder, label_encoder = encode_data()
-
     # Get atom coordinates in frame:
-    atom_coords = _get_frame_atom_coordinates(frame_array, data_encoder)
+    atom_coords = _get_frame_atom_coordinates(frame_array)
 
     # Normalize the array from 0 to 1:
     normalized_array = _normalize_array(activation_array)
     # Zoom the activation layer to be the same shape of the input frame:
     zoom_factor = frame_array.shape[0] / activation_array.shape[0]
 
-    # The intensity (x,y,z, intensity) doesn't need to be altered, therefore
-    # its zoom value is 1
+    # The intensity (x,y,z, intensity) doesn't need to be altered, therefore its zoom value is 1
     resized_array = zoom(normalized_array, (zoom_factor, zoom_factor, zoom_factor, 1))
 
     # Plot each amino acid:
-    for i in range(0, len(label_encoder.categories_[0])):
+    for i, residue in enumerate(list(standard_amino_acids.values())):
         frame_slice = resized_array[:, :, :, i]
 
         # Extract activation Coordinates:
@@ -154,14 +148,14 @@ def _visualize_frame(
         ax = fig.add_subplot(121, projection="3d")
 
         # Label the real residue present in the position
-        if label_encoder.categories_[0][i] == real_residue:
+        if residue == real_residue:
             is_correct_residue = " Target"
         else:
             is_correct_residue = ""
 
         # Plot Settings:
         ax.set_title(
-            label_encoder.categories_[0][i]
+            residue
             + " "
             + str(round(calculated_residue_probability[i] * 100, 2))
             + is_correct_residue,
@@ -205,8 +199,7 @@ def _visualize_frame(
 
         # Save
         plt.savefig(
-            PLOT_DIR
-            / (label_encoder.categories_[0][i] + f"_frame_{frame_index}" + ".png"),
+            PLOT_DIR / (residue + f"_frame_{frame_index}" + ".png"),
             bbox_inches="tight",
             pad_inches=0.3,
             quality=95,

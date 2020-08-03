@@ -1,8 +1,5 @@
-import pickle
 import h5py
-import numpy as np
 import typing as t
-from operator import itemgetter
 import warnings
 import copy
 
@@ -10,56 +7,11 @@ from ampal.amino_acids import standard_amino_acids
 from collections import Counter
 from pathlib import Path
 from random import shuffle
-from sklearn.preprocessing import OneHotEncoder
 
-from aposteriori.dnn.config import ATOMIC_NUMBERS, ENCODER_PATH, UNCOMMON_RESIDUE_DICT
-
-
-def encode_data(encoder_path: Path = ENCODER_PATH, load_existing_encoder: bool = True):
-    """
-
-    Parameters
-    ----------
-    encoder_path: Path
-        Path to the encoder. If it exists it loads it for use.
-    load_existing_encoder: bool
-        Whether to load an existing encoder or recreate it.
-
-    Returns
-    -------
-    atom_encoder: sklearn.preprocessing._encoders.OneHotEncoder
-        Encodes atoms in frame to one-hot encoded atoms.
-
-    residue_encoder: sklearn.preprocessing._encoders.OneHotEncoder
-        Encodes residues label to one-hot encoded residues. Uses ampal standard
-        residues as guide.
-    """
-
-    if encoder_path.exists() and load_existing_encoder:
-        with open(encoder_path, "rb") as f:
-            encoders = pickle.load(f)
-            atom_encoder = encoders["atom_encoder"]
-            residue_encoder = encoders["residue_encoder"]
-
-    else:
-        atom_encoder = OneHotEncoder(
-            categories="auto", sparse=False, handle_unknown="ignore"
-        )
-        atom_encoder.fit(np.array(ATOMIC_NUMBERS).reshape(-1, 1))
-
-        residue_encoder = OneHotEncoder(categories="auto", sparse=False)
-        residue_encoder.fit(
-            np.array(list(standard_amino_acids.values())).reshape(-1, 1)
-        )
-        with open(encoder_path, "wb") as f:
-            pickle.dump(
-                {"atom_encoder": atom_encoder, "residue_encoder": residue_encoder}, f
-            )
-
-    return atom_encoder, residue_encoder
+from aposteriori.dnn.config import UNCOMMON_RESIDUE_DICT
 
 
-def create_flat_dataset_map(frame_dataset: Path):
+def create_flat_dataset_map(frame_dataset: Path) -> t.List[t.Tuple[str, int, str, str]]:
     """
     Flattens the structure of the h5 dataset for batching and balancing
     purposes.
@@ -72,13 +24,14 @@ def create_flat_dataset_map(frame_dataset: Path):
           └─[chain_id] Contains a number of subgroups, one for each residue.
             └─[residue_id] voxels_per_side^3 array of ints, representing element number.
               └─.attrs['label'] Three-letter code for the residue.
+              └─.attrs['encoded_residue'] One-hot encoding of the residue.
 
     Returns
     -------
 
     flat_dataset_map: t.List[t.Tuple]
         List of tuples with the order
-        [... (pdb_code, chain_id, residue_id,  residue_label) ...]
+        [... (pdb_code, chain_id, residue_id,  residue_label, encoded_residue) ...]
     """
     standard_residues = list(standard_amino_acids.values())
 
@@ -88,6 +41,7 @@ def create_flat_dataset_map(frame_dataset: Path):
         for pdb_code in dataset_file:
             for chain_id in dataset_file[pdb_code].keys():
                 for residue_id in dataset_file[pdb_code][chain_id].keys():
+                    # Extract residue info:
                     residue_label = dataset_file[pdb_code][chain_id][
                         str(residue_id)
                     ].attrs["label"]
@@ -112,7 +66,9 @@ def create_flat_dataset_map(frame_dataset: Path):
     return flat_dataset_map
 
 
-def balance_dataset(flat_dataset_map: t.List[t.Tuple]):
+def balance_dataset(
+    flat_dataset_map: t.List[t.Tuple[str, int, str, str]]
+) -> t.List[t.Tuple[str, int, str, str]]:
     """
     Balances the dataset by undersampling the least present residue.
 
@@ -135,7 +91,7 @@ def balance_dataset(flat_dataset_map: t.List[t.Tuple]):
     # List all resiudes:
     standard_residues = list(standard_amino_acids.values())
     # Extract residues and append to a dictionary using the residue as key:
-    dataset_dict = {r:[] for r in standard_residues}
+    dataset_dict = {r: [] for r in standard_residues}
 
     all_residues_in_dataset = []
     for res_map in flat_dataset_map_copy:
@@ -155,10 +111,12 @@ def balance_dataset(flat_dataset_map: t.List[t.Tuple]):
         balanced_dataset_map += dataset_dict[residue][:max_res_num]
     # Check whether the total number of residues is correct:
     assert (
-            len(balanced_dataset_map) == 20 * max_res_num
+        len(balanced_dataset_map) == 20 * max_res_num
     ), f"Expected balanced dataset to be {20 * max_res_num} but got {len(balanced_dataset_map)}"
     # Check whether the number of residues per class is correct:
     all_balanced_residues = [res[-1] for res in balanced_dataset_map]
-    assert (Counter(list(standard_amino_acids.values())*max_res_num) == Counter(all_balanced_residues))
+    assert Counter(list(standard_amino_acids.values()) * max_res_num) == Counter(
+        all_balanced_residues
+    )
 
     return balanced_dataset_map

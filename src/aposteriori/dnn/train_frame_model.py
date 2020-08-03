@@ -11,7 +11,10 @@ from aposteriori.dnn.network.analysis.callbacks import (
     create_tb_callback,
 )
 from aposteriori.dnn.config import *
-from aposteriori.dnn.data_processing.tools import balance_dataset, create_flat_dataset_map, encode_data
+from aposteriori.dnn.data_processing.tools import (
+    balance_dataset,
+    create_flat_dataset_map,
+)
 from aposteriori.dnn.data_processing.discretization import (
     FrameDiscretizedProteinsSequence,
 )
@@ -20,6 +23,7 @@ from aposteriori.dnn.network.visualization.frame_activation import visualize_mod
 from aposteriori.dnn.network.visualization.prediction_entropy import (
     visualize_model_entropy,
 )
+from ampal.amino_acids import standard_amino_acids
 
 
 def log_uncaught_exceptions(ex_type, ex_value, ex_traceback):
@@ -43,8 +47,9 @@ if __name__ == "__main__":
 
     flat_dataset_map = create_flat_dataset_map(HDF5_STRUCTURES_PATH)
     logger.info(f"Started with {len(flat_dataset_map)} frames.\n")
-    flat_dataset_map = balance_dataset(flat_dataset_map)
-    logger.info(f"Balanced to {len(flat_dataset_map)} frames.\n")
+    if BALANCE_RESIDUES:
+        flat_dataset_map = balance_dataset(flat_dataset_map)
+        logger.info(f"Balanced to {len(flat_dataset_map)} frames.\n")
 
     # Splitting the dataset
     training_data, validation_data = train_test_split(
@@ -78,12 +83,11 @@ if __name__ == "__main__":
         pass
 
     # Define callbacks:
-    _, residue_encoder = encode_data()
     confusion_plotter = FrameConfusionPlotter(
         OUTPUT_DIR / (NAME_MODEL + "{epoch:02d}-cm.svg"),
         VALIDATION_SET,
         10,
-        residue_encoder.categories_[0],
+        list(standard_amino_acids.values()),
     )
     tb_callback = create_tb_callback()
 

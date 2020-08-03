@@ -7,9 +7,6 @@ import numpy as np
 import tensorflow.keras as keras
 from tensorflow.keras.models import load_model
 
-from aposteriori.dnn.data_processing.tools import encode_data
-from aposteriori.dnn.config import UNCOMMON_RESIDUE_DICT
-
 
 class FrameDiscretizedProteinsSequence(keras.utils.Sequence):
     """
@@ -60,7 +57,7 @@ class FrameDiscretizedProteinsSequence(keras.utils.Sequence):
     def __init__(
         self,
         dataset_path: Path,
-        dataset_map: t.List[tuple],
+        dataset_map: t.List[t.Tuple],
         voxels_per_side: int,
         batch_size: int = 32,
         shuffle: bool = True,
@@ -71,52 +68,36 @@ class FrameDiscretizedProteinsSequence(keras.utils.Sequence):
         self.batch_size = batch_size
         self.shuffle = shuffle
 
-        # Get encoding for atomic numbers and amino acids:
-        self.atom_encoder, self.residue_encoder = encode_data()
-
         self.on_epoch_end()
 
     def __len__(self):
         return int(np.floor(len(self.dataset_map) / self.batch_size))
 
     def __getitem__(self, index):
-        dims = (
-            self.voxels_per_side,
-            self.voxels_per_side,
-            self.voxels_per_side,
-            len(self.atom_encoder.categories_[0]),
-        )
-        X = np.empty((self.batch_size, *dims), dtype=np.uint8)
-        y = np.empty(self.batch_size, dtype="|S3")
-        data_point_batch = self.dataset_map[
-            index * self.batch_size : (index + 1) * self.batch_size
-        ]
-
+        # Open hdf5:
         with h5py.File(str(self.dataset_path), "r") as dataset:
-            for i, (pdb_code, chain_id, residue_id, residue_label) in enumerate(
-                data_point_batch
-            ):
+            dims = (
+                self.voxels_per_side,
+                self.voxels_per_side,
+                self.voxels_per_side,
+                int(float(dataset.attrs["encoder_length"])),
+            )
+
+            X = np.empty((self.batch_size, *dims), dtype=bool)
+            y = np.empty((self.batch_size, 20), dtype=bool)
+            data_point_batch = self.dataset_map[
+                index * self.batch_size : (index + 1) * self.batch_size
+            ]
+
+            for i, (pdb_code, chain_id, residue_id, _) in enumerate(data_point_batch):
+                # Extract frame:
                 residue_frame = np.asarray(dataset[pdb_code][chain_id][residue_id][()])
-                shape = residue_frame.shape
-
-                X[i] = self.atom_encoder.transform(
-                    residue_frame.flatten().reshape(-1, 1)
-                ).reshape(*shape, -1)
-
-                if residue_label not in self.residue_encoder.categories_[0]:
-                    if residue_label in UNCOMMON_RESIDUE_DICT.keys():
-                        print(f"{residue_label} is not a standard residue.")
-                        residue_label = UNCOMMON_RESIDUE_DICT[residue_label]
-                        print(f"Residue converted to {residue_label}.")
-                    else:
-                        assert (
-                            residue_label in self.residue_encoder.categories_[0]
-                        ), f"Expected natural amino acid, but got {residue_label}."
-
-                y[i,] = residue_label
-
-        encoded_y = self.residue_encoder.transform(y.reshape(-1, 1))
-        return X, encoded_y
+                X[i] = residue_frame
+                # Extract residue label:
+                y[i] = dataset[pdb_code][chain_id][residue_id].attrs["encoded_residue"]
+        # Encode residue label:
+        # encoded_y = self.residue_encoder.transform(y.reshape(-1, 1))
+        return X, y
 
     def on_epoch_end(self):
         if self.shuffle:
