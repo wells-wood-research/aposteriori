@@ -18,12 +18,13 @@ TEST_DATA_DIR = Path("tests/testing_files/pdb_files/")
 
 @settings(deadline=700)
 @given(integers(min_value=0, max_value=214))
-def test_create_residue_frame_with_cb(residue_number):
+def test_create_residue_frame_cnocb_encoding(residue_number):
     assembly = ampal.load_pdb(str(TEST_DATA_DIR / "3qy1.pdb"))
     focus_residue = assembly[0][residue_number]
 
     # Make sure that residue correctly aligns peptide plane to XY
-    cfds.align_to_residue_plane(focus_residue, encode_cb=True)
+    cfds.align_to_residue_plane(focus_residue)
+    cfds.encode_cb_to_ampal_residue(focus_residue)
     assert np.array_equal(
         focus_residue["CA"].array, (0, 0, 0,)
     ), "The CA atom should lie on the origin."
@@ -62,9 +63,9 @@ def test_create_residue_frame_with_cb(residue_number):
     single_res_assembly[0].parent = single_res_assembly
     single_res_assembly[0][0].parent = single_res_assembly[0]
     array = cfds.create_residue_frame(
-        single_res_assembly[0][0], frame_edge_length, voxels_per_side
+        single_res_assembly[0][0], frame_edge_length, voxels_per_side, encode_cb=True, atom_encoder="CNOCB", encoder_length=4
     )
-    assert array[centre, centre, centre] == 6, "The central atom should be CA."
+    np.testing.assert_array_equal(array[centre, centre, centre], [True, False, False, False], err_msg="The central atom should be CA.")
     nonzero_indices = list(zip(*np.nonzero(array)))
     assert (
         len(nonzero_indices) == 5
@@ -82,7 +83,7 @@ def test_create_residue_frame_backbone_only(residue_number):
     focus_residue = assembly[0][residue_number]
 
     # Make sure that residue correctly aligns peptide plane to XY
-    cfds.align_to_residue_plane(focus_residue, encode_cb=False)
+    cfds.align_to_residue_plane(focus_residue)
     assert np.array_equal(
         focus_residue["CA"].array, (0, 0, 0,)
     ), "The CA atom should lie on the origin."
@@ -113,9 +114,9 @@ def test_create_residue_frame_backbone_only(residue_number):
     single_res_assembly[0][0].parent = single_res_assembly[0]
     array = cfds.create_residue_frame(
         single_res_assembly[0][0], frame_edge_length, voxels_per_side,
-        encode_cb=False
+        encode_cb=False, atom_encoder="CNO", encoder_length=3,
     )
-    assert array[centre, centre, centre] == 6, "The central atom should be CA."
+    np.testing.assert_array_equal(array[centre, centre, centre], [True, False, False], err_msg="The central atom should be CA.")
     nonzero_indices = list(zip(*np.nonzero(array)))
     assert (
         len(nonzero_indices) == 4
@@ -163,7 +164,7 @@ def test_make_frame_dataset():
             voxels_per_side=voxels_per_side,
             verbosity=1,
             require_confirmation=False,
-            encode_cb=True,
+            atom_encoder="CNO",
         )
         with h5py.File(output_file_path, "r") as dataset:
             for n in range(1, 77):
@@ -174,7 +175,9 @@ def test_make_frame_dataset():
                     residue=ampal_1ubq["A"][residue_number],
                     frame_edge_length=frame_edge_length,
                     voxels_per_side=voxels_per_side,
-                    encode_cb=True,
+                    encode_cb=False,
+                    atom_encoder="CNO",
+                    encoder_length=3,
                 )
                 hdf5_array = dataset["1ubq"]["A"][residue_number][()]
                 npt.assert_array_equal(
