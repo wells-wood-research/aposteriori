@@ -88,6 +88,27 @@ def align_to_residue_plane(residue: ampal.Residue):
     return
 
 
+def encode_cb_to_ampal_residue(residue: ampal.Residue):
+    """
+    TODO:
+    This was calculated by averaging the coordinates of the aligned frames for the 1QYS protein
+
+    Parameters
+    ----------
+    residue
+
+    Returns
+    -------
+
+    """
+    avg_cb_position = (-0.741287356, -0.53937931, -1.224287356)
+    cb_atom = ampal.base_ampal.Atom(
+        avg_cb_position, element="C", res_label="CB", parent=residue
+    )
+    residue["CB"] = cb_atom
+    return
+
+
 def within_frame(frame_edge_length: float, atom: ampal.Atom) -> bool:
     """Tests if an atom is within the `frame_edge_length` of the origin."""
     half_frame_edge_length = frame_edge_length / 2
@@ -168,7 +189,7 @@ def encode_atom(atom: ampal.Atom, encoder_length: int) -> np.ndarray:
 
 def encode_residue(residue: str) -> np.ndarray:
     """
-
+    TODO:
     Parameters
     ----------
     residue
@@ -257,12 +278,7 @@ def create_residue_frame(
     # Create a Cb atom at avg postion:
     if atom_encoder in ["CNOCB", "CNOCBCA"]:
         if encode_cb:
-            # This was calculated by averaging the coordinates of the aligned frames for the 1QYS protein
-            avg_cb_position = (-0.741287356, -0.53937931, -1.224287356)
-            cb_atom = ampal.base_ampal.Atom(
-                avg_cb_position, element="C", res_label="CB", parent=residue
-            )
-            residue["CB"] = cb_atom
+            encode_cb_to_ampal_residue(residue)
 
     frame = np.zeros(
         (voxels_per_side, voxels_per_side, voxels_per_side, encoder_length), dtype=bool
@@ -287,7 +303,7 @@ def create_residue_frame(
             f"{cha.id}:{res.id}:{atom.res_label}"
         )
         np.testing.assert_array_equal(
-            frame[indices], np.array([False, False, False], dtype=bool)
+            frame[indices], np.array([False]*len(frame[indices]), dtype=bool)
         )
         assert frame[indices][0] == False, (
             f"Voxel should not be occupied: Currently "
