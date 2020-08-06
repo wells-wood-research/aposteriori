@@ -41,6 +41,23 @@ class DatasetMetadata:
     atom_filter_fn: str
     residue_encoder: t.List[str]
 
+    @classmethod
+    def import_metadata_dict(meta_dict: t.Dict[str, t.Any]):
+        """
+        Imports metada of a dataset from a dictionary object to the DatasetMetadata class.
+
+        Parameters
+        ----------
+        meta_dict: t.Dict[str, t.Any]
+            Dictionary of metadata parameters for the dataset.
+
+        Returns
+        -------
+        DatasetMetadata dataclass with filled metadata.
+
+        """
+        return DatasetMetadata(**meta_dict)
+
 
 StrOrPath = t.Union[str, pathlib.Path]
 ChainDict = t.Dict[str, t.List[ResidueResult]]
@@ -530,8 +547,8 @@ def save_results(
                 # Encode metadata:
                 metadata_dict = metadata.__dict__
                 # Loop through metadata dataclass and add it as attribute:
-                for meta in list(metadata_dict.keys()):
-                    hd5.attrs[str(meta)] = metadata_dict[meta]
+                for meta, meta_attribute in metadata_dict.items():
+                    hd5.attrs[str(meta)] = meta_attribute
 
                 pdb_group = hd5.create_group(pdb_code)
                 for chain_id, res_results in chain_dict.items():
@@ -1009,6 +1026,8 @@ def cli(
 
 
 # }}}
+
+
 if __name__ == "__main__":
     # The cli will be run if this file is invoked directly
     # It is also hooked up as a script in `pyproject.toml`
