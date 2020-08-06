@@ -90,15 +90,13 @@ def align_to_residue_plane(residue: ampal.Residue):
 
 def encode_cb_to_ampal_residue(residue: ampal.Residue):
     """
-    TODO:
-    This was calculated by averaging the coordinates of the aligned frames for the 1QYS protein
+    Encodes a Cb atom to an AMPAL residue. The Cb is added to an average position
+    calculated by averaging the Cb coordinates of the aligned frames for the 1QYS protein.
 
     Parameters
     ----------
-    residue
-
-    Returns
-    -------
+    residue: ampal.Residue
+        Focus residues that requires the Cb atom.
 
     """
     avg_cb_position = (-0.741287356, -0.53937931, -1.224287356)
@@ -189,14 +187,18 @@ def encode_atom(atom: ampal.Atom, encoder_length: int) -> np.ndarray:
 
 def encode_residue(residue: str) -> np.ndarray:
     """
-    TODO:
+    One-Hot Encodes a residue string to a numpy array. Attempts to convert non-standard
+    residues using AMPAL's UNCOMMON_RESIDUE_DICT.
+
     Parameters
     ----------
-    residue
+    residue: str
+        Residue label of the frame.
 
     Returns
     -------
-
+    residue_encoding: np.ndarray
+        One-Hot encoding of the residue with shape (20,)
     """
     std_residues = list(standard_amino_acids.values())
     residue_encoding = np.zeros(len(std_residues), dtype=bool)
@@ -434,7 +436,7 @@ def create_frames_from_structure(
 # }}}
 # {{{ Dataset Creation
 def default_atom_filter(atom: ampal.Atom) -> bool:
-    """Filters for all heavy protein backbone atoms."""
+    """Filters all heavy protein backbone atoms."""
     backbone_atoms = ("N", "CA", "C", "O")
     if atom.element == "H":
         return False
@@ -445,7 +447,7 @@ def default_atom_filter(atom: ampal.Atom) -> bool:
 
 
 def keep_sidechain_cb_atom_filter(atom: ampal.Atom) -> bool:
-    """Filters for all heavy protein backbone atoms and the Beta Carbon of
+    """Filters all heavy protein backbone atoms and the Beta Carbon of
     the side-chain."""
     atoms_to_keep = ("N", "CA", "C", "O", "CB")
     if atom.element == "H":

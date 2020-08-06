@@ -1,11 +1,11 @@
 import urllib
 import typing as t
+import warnings
 from pathlib import Path
 
 import numpy as np
 import ampal
 import tensorflow as tf
-
 from ampal.protein import Polypeptide
 from scipy.stats import entropy
 
@@ -28,7 +28,7 @@ from aposteriori.dnn.data_processing.tools import create_flat_dataset_map
 
 
 def _annotate_ampalobj_with_entropy(
-    ampal_structure: ampal.assembly, prediction_entropy: np.ndarray
+    ampal_structure: ampal.Assembly, prediction_entropy: np.ndarray
 ) -> ampal.assembly:
     """
     Assigns a B-factor to each residue equivalent to the prediction entropy
@@ -36,9 +36,9 @@ def _annotate_ampalobj_with_entropy(
 
     Parameters
     ----------
-    ampal_structure : AmpalContainer or Assembly
-        Ampal structure to be modified. If an AmpalContainer is passed,
-        this will take the first Assembly in the container `ampal_structure[0]`.
+    ampal_structure : ampal.Assembly or ampal.AmpalContainer
+        Ampal structure to be modified. If an ampal.AmpalContainer is passed,
+        this will take the first Assembly in the ampal.AmpalContainer `ampal_structure[0]`.
     prediction_entropy : numpy.ndarray of floats
         Numpy array with entropy on predictions (n,) where n is the number
         of residues in the structure.
@@ -50,6 +50,7 @@ def _annotate_ampalobj_with_entropy(
     """
     # Deals with structures from NMR as ampal returns Container of Assemblies
     if isinstance(ampal_structure, ampal.AmpalContainer):
+        warnings.warn(f"Selecting the first state from the NMR structure {ampal_structure.id}")
         ampal_structure = ampal_structure[0]
 
     # Reset B-factor:
