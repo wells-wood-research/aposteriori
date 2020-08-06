@@ -5,8 +5,9 @@ from datetime import datetime
 
 import matplotlib.pyplot as plt
 import tensorflow as tf
-from tensorflow.python.client import device_lib
 import tensorflow.keras.backend
+from ampal.data import ELEMENT_DATA
+from tensorflow.python.client import device_lib
 from tensorflow.keras.optimizers import Adam
 
 # Config paths
@@ -70,9 +71,9 @@ BALANCE_RESIDUES = True
 VISUALIZE_ACTIVATION_AFTER_TRAINING = True
 ATOM_COLORS = {
     # Atomic number : Color
-    0: "black",  # Carbon
-    1: "blue",  # Nitrogen
-    2: "red",  # Oxygen
+    0: ELEMENT_DATA['C']['CPK'],  # Carbon
+    1: ELEMENT_DATA['N']['CPK'],
+    2: ELEMENT_DATA['O']['CPK'],  # Oxygen
     3: "orange",  # +1
     4: "green"  # +2
 }
