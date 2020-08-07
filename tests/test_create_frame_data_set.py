@@ -54,7 +54,8 @@ def test_create_residue_frame_cnocb_encoding(residue_number):
             "All atoms filtered by `within_frame` should be within "
             "`frame_edge_length/2` of the origin"
         )
-
+    # Obtain atom encoder:
+    codec = cfds.Codec(atom_encoder="CNOCB")
     # Make sure that aligned residue sits on XY after it is discretized
     single_res_assembly = ampal.Assembly(
         molecules=ampal.Polypeptide(monomers=copy.deepcopy(focus_residue).backbone)
@@ -63,8 +64,7 @@ def test_create_residue_frame_cnocb_encoding(residue_number):
     single_res_assembly[0].parent = single_res_assembly
     single_res_assembly[0][0].parent = single_res_assembly[0]
     array = cfds.create_residue_frame(
-        single_res_assembly[0][0], frame_edge_length, voxels_per_side, encode_cb=True, atom_encoder="CNOCB", encoder_length=4
-    )
+        single_res_assembly[0][0], frame_edge_length, voxels_per_side, encode_cb=True, atom_encoder="CNOCB", codec=codec)
     np.testing.assert_array_equal(array[centre, centre, centre], [True, False, False, False], err_msg="The central atom should be CA.")
     nonzero_indices = list(zip(*np.nonzero(array)))
     assert (
@@ -112,9 +112,11 @@ def test_create_residue_frame_backbone_only(residue_number):
     # Need to reassign the parent so that the residue is the only thing in the assembly
     single_res_assembly[0].parent = single_res_assembly
     single_res_assembly[0][0].parent = single_res_assembly[0]
+    # Obtain atom encoder:
+    codec = cfds.Codec(atom_encoder="CNO")
     array = cfds.create_residue_frame(
         single_res_assembly[0][0], frame_edge_length, voxels_per_side,
-        encode_cb=False, atom_encoder="CNO", encoder_length=3,
+        encode_cb=False, atom_encoder="CNO", codec=codec
     )
     np.testing.assert_array_equal(array[centre, centre, centre], [True, False, False], err_msg="The central atom should be CA.")
     nonzero_indices = list(zip(*np.nonzero(array)))
@@ -166,6 +168,8 @@ def test_make_frame_dataset():
             require_confirmation=False,
             atom_encoder="CNO",
         )
+        # Obtain atom encoder:
+        codec = cfds.Codec(atom_encoder="CNO")
         with h5py.File(output_file_path, "r") as dataset:
             for n in range(1, 77):
                 # check that the frame for all the data frames match between the input
@@ -177,7 +181,7 @@ def test_make_frame_dataset():
                     voxels_per_side=voxels_per_side,
                     encode_cb=False,
                     atom_encoder="CNO",
-                    encoder_length=3,
+                    codec=codec,
                 )
                 hdf5_array = dataset["1ubq"]["A"][residue_number][()]
                 npt.assert_array_equal(

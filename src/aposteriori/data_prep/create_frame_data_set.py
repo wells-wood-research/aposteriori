@@ -37,7 +37,6 @@ class ResidueResult:
 class DatasetMetadata:
     atom_encoder: str
     encode_cb: bool
-    encoder_length: int
     atom_filter_fn: str
     residue_encoder: t.List[str]
 
@@ -65,6 +64,83 @@ ChainDict = t.Dict[str, t.List[ResidueResult]]
 
 
 # {{{ Residue Frame Creation
+class Codec:
+    def __init__(self, atom_encoder: str):
+        # Define Labels:
+        label_dict = {
+            "CNO": ["C", "N", "O"],
+            "CNOCB": ["C", "N", "O", "CB"],
+            "CNOCBCA": ["C", "N", "O", "CB", "CA"],
+        }
+        # Set attributes:
+        self.atomic_labels = label_dict[atom_encoder]
+        self.encoder_length = len(self.atomic_labels)
+        self.label_to_encoding = dict(
+            zip(self.atomic_labels, range(self.encoder_length))
+        )
+        self.encoding_to_label = dict(
+            zip(range(self.encoder_length), self.atomic_labels)
+        )
+        return
+
+    def encode_atom(self, atom_label: str) -> np.ndarray:
+        """
+        Encodes atoms in a boolean array depending on the type of encoding chosen.
+
+        Parameters
+        ----------
+        atom_label: str
+            Label of the atom to be encoded.
+
+        Returns
+        -------
+        atom_encoding: np.ndarray
+            Boolean array with atom encoding of shape (encoder_length,)
+
+        """
+        # Creating empty atom encoding:
+        encoded_atom = np.zeros(self.encoder_length, dtype=bool)
+        # Attempt encoding:
+        if atom_label in list(self.label_to_encoding.keys()):
+            atom_idx = self.label_to_encoding[atom_label]
+            encoded_atom[atom_idx] = True
+        # Encode CA as C in case it is not in the labels:
+        elif atom_label == "CA":
+            atom_idx = self.label_to_encoding["C"]
+            encoded_atom[atom_idx] = True
+        else:
+            warnings.warn(
+                f"{atom_label} not found in {self.atomic_labels} encoding. Returning None."
+            )
+
+        return encoded_atom
+
+    def decode_atom(self, encoded_atom: np.ndarray) -> t.Optional[str]:
+        """
+        Decodes atoms into string depending on the type of encoding chosen.
+
+        Parameters
+        ----------
+        encoded_atom: np.ndarray
+            Boolean array with atom encoding of shape (encoder_length,)
+
+        Returns
+        -------
+        decoded_atom: t.Optional[str]
+            Label of the decoded atom.
+        """
+        # Get True index of one-hot encoding
+        atom_encoding = np.nonzero(encoded_atom)[0]
+
+        if atom_encoding.size == 0:
+            warnings.warn(f"Encoded atom was 0.")
+        # If not Empty space:
+        else:
+            # Decode Atom:
+            decoded_atom = self.encoding_to_label[atom_encoding[0]]
+            return decoded_atom
+
+
 def align_to_residue_plane(residue: ampal.Residue):
     """Reorients the parent ampal.Assembly that the peptide plane lies on xy.
 
@@ -153,55 +229,6 @@ def discretize(
     )
 
 
-def encode_atom(atom: ampal.Atom, encoder_length: int) -> np.ndarray:
-    """
-    Encodes atoms in a boolean array depending on the type of encoding chosen.
-
-    Parameters
-    ----------
-    atom: ampal.Atom
-        Atom to be encoded.
-    encoder_length: int
-        Length of the number of channels needed in the encoded atoms.
-
-    Returns
-    -------
-    atom_encoding: np.ndarray
-        Boolean array with atom encoding of shape (encoder_length,)
-
-    """
-    atom_label = atom.res_label
-    # Creating empty atom encoding
-    atom_encoding = np.zeros(encoder_length, dtype=bool)
-    # Attempt encoding
-    if atom_label == "C":
-        atom_encoding[0] = True
-    elif atom_label == "N":
-        atom_encoding[1] = True
-    elif atom_label == "O":
-        atom_encoding[2] = True
-    elif atom_label == "CB":
-        atom_encoding[3] = True
-    elif atom_label == "CA":
-        if encoder_length == 3 or 4:
-            # Add General C encoding
-            atom_encoding[0] = True
-        elif encoder_length == 5:
-            atom_encoding[4] = True
-        else:
-            assert encoder_length in [
-                3,
-                4,
-                5,
-            ], f"Expected CNO (3), CNOCB (4), CNOCACB (5) encoding (classes) but got encoding with {encoder_length} classes."
-    else:
-        warnings.warn(
-            f"Attempted encoding of atom {atom_label}, but it is not C, N, O, CB or CA. Returning 0 instead."
-        )
-
-    return atom_encoding
-
-
 def encode_residue(residue: str) -> np.ndarray:
     """
     One-Hot Encodes a residue string to a numpy array. Attempts to convert non-standard
@@ -246,7 +273,7 @@ def create_residue_frame(
     voxels_per_side: int,
     encode_cb: bool,
     atom_encoder: str,
-    encoder_length: int,
+    codec: object,
 ) -> np.ndarray:
     """Creates a discrete representation of a volume of space around a residue.
 
@@ -269,8 +296,8 @@ def create_residue_frame(
     atom_encoder: str
         Whether to encode the frames as C, N, O or have additional channels for Ca and Cb.
         Options available are: "CNO", "CNOCB", "CNOCBCA".
-    encoder_length: int
-        Length of the number of channels needed in the encoded atoms.
+    codec: object
+        Codec object with encoding instructions.
 
     Returns
     -------
@@ -300,7 +327,8 @@ def create_residue_frame(
             encode_cb_to_ampal_residue(residue)
 
     frame = np.zeros(
-        (voxels_per_side, voxels_per_side, voxels_per_side, encoder_length), dtype=bool
+        (voxels_per_side, voxels_per_side, voxels_per_side, codec.encoder_length),
+        dtype=bool,
     )
     # iterate through all atoms within the frame
     for atom in (
@@ -322,15 +350,17 @@ def create_residue_frame(
             f"{cha.id}:{res.id}:{atom.res_label}"
         )
         np.testing.assert_array_equal(
-            frame[indices], np.array([False]*len(frame[indices]), dtype=bool)
+            frame[indices], np.array([False] * len(frame[indices]), dtype=bool)
         )
         assert frame[indices][0] == False, (
             f"Voxel should not be occupied: Currently "
             f"{frame[indices]}, "
             f"{ass.id}:{cha.id}:{res.id}:{atom.res_label}"
         )
-        frame[indices] = encode_atom(atom, encoder_length)
+        frame[indices] = Codec.encode_atom(codec, atom.res_label)
     centre = voxels_per_side // 2
+
+    # Check whether central atom is C:
     if atom_encoder in ["CNO", "CNOCB"]:
         assert (
             frame[centre, centre, centre][0] == 1
@@ -339,6 +369,7 @@ def create_residue_frame(
         assert (
             frame[centre, centre, centre][4] == 1
         ), f"The central atom should be Carbon, but it is {frame[centre, centre, centre]}."
+
     return frame
 
 
@@ -352,7 +383,6 @@ def create_frames_from_structure(
     verbosity: int,
     encode_cb: bool,
     atom_encoder: str,
-    encoder_length: int,
 ) -> t.Tuple[str, ChainDict]:
     """Creates residue frames for each residue in the structure.
 
@@ -382,8 +412,6 @@ def create_frames_from_structure(
     atom_encoder: str
         Whether to encode the frames as C, N, O or have additional channels for Ca and Cb.
         Options available are: "CNO", "CNOCB", "CNOCBCA".
-    encoder_length: int
-        Length of the number of channels needed in the encoded atoms.
 
     """
     name = structure_path.name.split(".")[0]
@@ -421,6 +449,8 @@ def create_frames_from_structure(
         if verbosity > 0:
             print(f"{name}:\tProcessing chain {chain.id}...")
         chain_dict[chain.id] = []
+        # Obtain atom encoder:
+        codec = Codec(atom_encoder)
         # Loop through each residue, voxelis:
         for residue in chain:
             if isinstance(residue, ampal.Residue):
@@ -431,7 +461,7 @@ def create_frames_from_structure(
                     voxels_per_side,
                     encode_cb,
                     atom_encoder,
-                    encoder_length,
+                    codec,
                 )
                 encoded_residue = encode_residue(residue.mol_code)
                 # Save results:
@@ -487,7 +517,6 @@ def process_single_path(
     verbosity: int,
     encode_cb: bool,
     atom_encoder: str,
-    encoder_length: int,
 ):
     """Processes a path and puts the results into a queue."""
     chain_filter_list: t.Optional[t.List[str]]
@@ -512,7 +541,6 @@ def process_single_path(
                 verbosity,
                 encode_cb,
                 atom_encoder,
-                encoder_length,
             )
         except Exception as e:
             result = str(e)
@@ -644,19 +672,12 @@ def process_paths(
         frames = manager.Value("i", 0)  # type: ignore
         errors = manager.dict()  # type: ignore
         total = len(structure_file_paths)
-        # create an empty array for discrete frame
-        if atom_encoder == "CNO":
-            encoder_length = 3
-        elif atom_encoder == "CNOCB":
-            encoder_length = 4
-        elif atom_encoder == "CNOCBCA":
-            encoder_length = 5
-        else:
-            assert atom_encoder in [
-                "CNO",
-                "CNOCB",
-                "CNOCBCA",
-            ], f"Expected encoder type to be CNO, CNOCB, CNOCBCA, but got {atom_encoder}."
+        # Check encoders:
+        assert atom_encoder in [
+            "CNO",
+            "CNOCB",
+            "CNOCBCA",
+        ], f"Expected encoder type to be CNO, CNOCB, CNOCBCA, but got {atom_encoder}."
 
         workers = [
             mp.Process(
@@ -673,12 +694,16 @@ def process_paths(
                     verbosity,
                     encode_cb,
                     atom_encoder,
-                    encoder_length,
                 ),
             )
             for proc_i in range(processes)
         ]
-        metadata = DatasetMetadata(atom_encoder, encode_cb, encoder_length, str(atom_filter_fn), list(standard_amino_acids.values()))
+        metadata = DatasetMetadata(
+            atom_encoder,
+            encode_cb,
+            str(atom_filter_fn),
+            list(standard_amino_acids.values()),
+        )
         storer = mp.Process(
             target=save_results,
             args=(
@@ -993,6 +1018,9 @@ def cli(
       └─[chain_id] Contains a number of subgroups, one for each residue.
         └─[residue_id] voxels_per_side^3 array of ints, representing element number.
           └─.attrs['label'] Three-letter code for the residue.
+          └─.attrs['encoded_residue'] One-hot encoding of the residue.
+
+
 
     So hdf5['1ctf']['A']['58'] would be an array for the voxelized.
     """
