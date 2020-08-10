@@ -16,7 +16,7 @@ import pytest
 TEST_DATA_DIR = Path("tests/testing_files/pdb_files/")
 
 
-@settings(deadline=700)
+@settings(deadline=1000)
 @given(integers(min_value=0, max_value=214))
 def test_create_residue_frame_cnocb_encoding(residue_number):
     assembly = ampal.load_pdb(str(TEST_DATA_DIR / "3qy1.pdb"))
@@ -55,7 +55,7 @@ def test_create_residue_frame_cnocb_encoding(residue_number):
             "`frame_edge_length/2` of the origin"
         )
     # Obtain atom encoder:
-    codec = cfds.Codec(atom_encoder="CNOCB")
+    codec = cfds.Codec.CNOCB()
     # Make sure that aligned residue sits on XY after it is discretized
     single_res_assembly = ampal.Assembly(
         molecules=ampal.Polypeptide(monomers=copy.deepcopy(focus_residue).backbone)
@@ -64,7 +64,7 @@ def test_create_residue_frame_cnocb_encoding(residue_number):
     single_res_assembly[0].parent = single_res_assembly
     single_res_assembly[0][0].parent = single_res_assembly[0]
     array = cfds.create_residue_frame(
-        single_res_assembly[0][0], frame_edge_length, voxels_per_side, encode_cb=True, atom_encoder="CNOCB", codec=codec)
+        single_res_assembly[0][0], frame_edge_length, voxels_per_side, encode_cb=True, codec=codec)
     np.testing.assert_array_equal(array[centre, centre, centre], [True, False, False, False], err_msg="The central atom should be CA.")
     nonzero_indices = list(zip(*np.nonzero(array)))
     assert (
@@ -113,10 +113,10 @@ def test_create_residue_frame_backbone_only(residue_number):
     single_res_assembly[0].parent = single_res_assembly
     single_res_assembly[0][0].parent = single_res_assembly[0]
     # Obtain atom encoder:
-    codec = cfds.Codec(atom_encoder="CNO")
+    codec = cfds.Codec.CNO()
     array = cfds.create_residue_frame(
         single_res_assembly[0][0], frame_edge_length, voxels_per_side,
-        encode_cb=False, atom_encoder="CNO", codec=codec
+        encode_cb=False, codec=codec
     )
     np.testing.assert_array_equal(array[centre, centre, centre], [True, False, False], err_msg="The central atom should be CA.")
     nonzero_indices = list(zip(*np.nonzero(array)))
@@ -134,6 +134,8 @@ def test_even_voxels_per_side(voxels_per_side):
     frame_edge_length = 18.0
     if voxels_per_side % 2:
         voxels_per_side += 1
+    # Obtain atom encoder:
+    codec = cfds.Codec.CNO()
     with pytest.raises(AssertionError, match=r".*must be odd*"):
         output_file_path = cfds.make_frame_dataset(
             structure_files=["eep"],
@@ -143,6 +145,7 @@ def test_even_voxels_per_side(voxels_per_side):
             voxels_per_side=voxels_per_side,
             require_confirmation=False,
             encode_cb=True,
+            codec=codec
         )
 
 
@@ -158,6 +161,8 @@ def test_make_frame_dataset():
             del atom.parent.atoms[atom.res_label]
             del atom
     with tempfile.TemporaryDirectory() as tmpdir:
+        # Obtain atom encoder:
+        codec = cfds.Codec.CNO()
         output_file_path = cfds.make_frame_dataset(
             structure_files=[test_file],
             output_folder=tmpdir,
@@ -166,10 +171,8 @@ def test_make_frame_dataset():
             voxels_per_side=voxels_per_side,
             verbosity=1,
             require_confirmation=False,
-            atom_encoder="CNO",
+            codec=codec,
         )
-        # Obtain atom encoder:
-        codec = cfds.Codec(atom_encoder="CNO")
         with h5py.File(output_file_path, "r") as dataset:
             for n in range(1, 77):
                 # check that the frame for all the data frames match between the input
@@ -180,7 +183,6 @@ def test_make_frame_dataset():
                     frame_edge_length=frame_edge_length,
                     voxels_per_side=voxels_per_side,
                     encode_cb=False,
-                    atom_encoder="CNO",
                     codec=codec,
                 )
                 hdf5_array = dataset["1ubq"]["A"][residue_number][()]

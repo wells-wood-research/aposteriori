@@ -35,13 +35,13 @@ class ResidueResult:
 
 @dataclass
 class DatasetMetadata:
-    atom_encoder: str
+    atom_encoder: t.List[str]
     encode_cb: bool
     atom_filter_fn: str
     residue_encoder: t.List[str]
 
     @classmethod
-    def import_metadata_dict(meta_dict: t.Dict[str, t.Any]):
+    def import_metadata_dict(cls, meta_dict: t.Dict[str, t.Any]):
         """
         Imports metada of a dataset from a dictionary object to the DatasetMetadata class.
 
@@ -55,7 +55,7 @@ class DatasetMetadata:
         DatasetMetadata dataclass with filled metadata.
 
         """
-        return DatasetMetadata(**meta_dict)
+        return cls(**meta_dict)
 
 
 StrOrPath = t.Union[str, pathlib.Path]
@@ -65,15 +65,9 @@ ChainDict = t.Dict[str, t.List[ResidueResult]]
 
 # {{{ Residue Frame Creation
 class Codec:
-    def __init__(self, atom_encoder: str):
-        # Define Labels:
-        label_dict = {
-            "CNO": ["C", "N", "O"],
-            "CNOCB": ["C", "N", "O", "CB"],
-            "CNOCBCA": ["C", "N", "O", "CB", "CA"],
-        }
+    def __init__(self, atomic_labels: t.List[str]):
         # Set attributes:
-        self.atomic_labels = label_dict[atom_encoder]
+        self.atomic_labels = atomic_labels
         self.encoder_length = len(self.atomic_labels)
         self.label_to_encoding = dict(
             zip(self.atomic_labels, range(self.encoder_length))
@@ -82,6 +76,19 @@ class Codec:
             zip(range(self.encoder_length), self.atomic_labels)
         )
         return
+
+    # Labels Class methods:
+    @classmethod
+    def CNO(cls):
+        return cls(["C", "N", "O"])
+
+    @classmethod
+    def CNOCB(cls):
+        return cls(["C", "N", "O", "CB"])
+
+    @classmethod
+    def CNOCBCA(cls):
+        return cls(["C", "N", "O", "CB", "CA"])
 
     def encode_atom(self, atom_label: str) -> np.ndarray:
         """
@@ -272,7 +279,6 @@ def create_residue_frame(
     frame_edge_length: float,
     voxels_per_side: int,
     encode_cb: bool,
-    atom_encoder: str,
     codec: object,
 ) -> np.ndarray:
     """Creates a discrete representation of a volume of space around a residue.
@@ -293,9 +299,6 @@ def create_residue_frame(
         so that the CA atom can be placed at the centre of the frame.
     encode_cb: bool
         Whether to encode the Cb at an average position in the frame.
-    atom_encoder: str
-        Whether to encode the frames as C, N, O or have additional channels for Ca and Cb.
-        Options available are: "CNO", "CNOCB", "CNOCBCA".
     codec: object
         Codec object with encoding instructions.
 
@@ -322,7 +325,7 @@ def create_residue_frame(
 
     align_to_residue_plane(residue)
     # Create a Cb atom at avg postion:
-    if atom_encoder in ["CNOCB", "CNOCBCA"]:
+    if "CB" in codec.atomic_labels:
         if encode_cb:
             encode_cb_to_ampal_residue(residue)
 
@@ -361,13 +364,13 @@ def create_residue_frame(
     centre = voxels_per_side // 2
 
     # Check whether central atom is C:
-    if atom_encoder in ["CNO", "CNOCB"]:
-        assert (
-            frame[centre, centre, centre][0] == 1
-        ), f"The central atom should be Carbon, but it is {frame[centre, centre, centre]}."
-    elif atom_encoder == "CNOCBCA":
+    if "CA" in codec.atomic_labels:
         assert (
             frame[centre, centre, centre][4] == 1
+        ), f"The central atom should be Carbon, but it is {frame[centre, centre, centre]}."
+    else:
+        assert (
+            frame[centre, centre, centre][0] == 1
         ), f"The central atom should be Carbon, but it is {frame[centre, centre, centre]}."
 
     return frame
@@ -382,7 +385,7 @@ def create_frames_from_structure(
     gzipped: bool,
     verbosity: int,
     encode_cb: bool,
-    atom_encoder: str,
+    codec: object,
 ) -> t.Tuple[str, ChainDict]:
     """Creates residue frames for each residue in the structure.
 
@@ -409,9 +412,8 @@ def create_frames_from_structure(
     encode_cb: bool
         Whether to encode the Cb at an average position in the frame. If
         True, it will not be filtered by the `atom_filter_fn`.
-    atom_encoder: str
-        Whether to encode the frames as C, N, O or have additional channels for Ca and Cb.
-        Options available are: "CNO", "CNOCB", "CNOCBCA".
+    codec: object
+        Codec object with encoding instructions.
 
     """
     name = structure_path.name.split(".")[0]
@@ -449,19 +451,12 @@ def create_frames_from_structure(
         if verbosity > 0:
             print(f"{name}:\tProcessing chain {chain.id}...")
         chain_dict[chain.id] = []
-        # Obtain atom encoder:
-        codec = Codec(atom_encoder)
         # Loop through each residue, voxelis:
         for residue in chain:
             if isinstance(residue, ampal.Residue):
                 # Create voxelised frame:
                 array = create_residue_frame(
-                    residue,
-                    frame_edge_length,
-                    voxels_per_side,
-                    encode_cb,
-                    atom_encoder,
-                    codec,
+                    residue, frame_edge_length, voxels_per_side, encode_cb, codec,
                 )
                 encoded_residue = encode_residue(residue.mol_code)
                 # Save results:
@@ -516,7 +511,7 @@ def process_single_path(
     gzipped: bool,
     verbosity: int,
     encode_cb: bool,
-    atom_encoder: str,
+    codec: object,
 ):
     """Processes a path and puts the results into a queue."""
     chain_filter_list: t.Optional[t.List[str]]
@@ -540,7 +535,7 @@ def process_single_path(
                 gzipped,
                 verbosity,
                 encode_cb,
-                atom_encoder,
+                codec,
             )
         except Exception as e:
             result = str(e)
@@ -625,7 +620,7 @@ def process_paths(
     gzipped: bool,
     verbosity: int,
     encode_cb: bool,
-    atom_encoder: str,
+    codec: object,
 ):
     """Discretizes a list of structures and stores them in a HDF5 object.
 
@@ -655,9 +650,8 @@ def process_paths(
         Level of logging sent to std out.
     encode_cb: bool
         Whether to encode the Cb at an average position in the frame.
-    atom_encoder: str
-        Whether to encode the frames as C, N, O or have additional channels for Ca and Cb.
-        Options available are: "CNO", "CNOCB", "CNOCBCA".
+    codec: object
+        Codec object with encoding instructions.
     """
 
     with mp.Manager() as manager:
@@ -672,13 +666,6 @@ def process_paths(
         frames = manager.Value("i", 0)  # type: ignore
         errors = manager.dict()  # type: ignore
         total = len(structure_file_paths)
-        # Check encoders:
-        assert atom_encoder in [
-            "CNO",
-            "CNOCB",
-            "CNOCBCA",
-        ], f"Expected encoder type to be CNO, CNOCB, CNOCBCA, but got {atom_encoder}."
-
         workers = [
             mp.Process(
                 target=process_single_path,
@@ -693,13 +680,13 @@ def process_paths(
                     gzipped,
                     verbosity,
                     encode_cb,
-                    atom_encoder,
+                    codec,
                 ),
             )
             for proc_i in range(processes)
         ]
         metadata = DatasetMetadata(
-            atom_encoder,
+            list(codec.atomic_labels),
             encode_cb,
             str(atom_filter_fn),
             list(standard_amino_acids.values()),
@@ -749,6 +736,7 @@ def make_frame_dataset(
     name: str,
     frame_edge_length: float,
     voxels_per_side: int,
+    codec: object,
     atom_filter_fn: t.Callable[[ampal.Atom], bool] = default_atom_filter,
     pieces_filter_file: t.Optional[StrOrPath] = None,
     processes: int = 1,
@@ -756,7 +744,6 @@ def make_frame_dataset(
     verbosity: int = 1,
     require_confirmation: bool = True,
     encode_cb: bool = True,
-    atom_encoder: str = "CNO",
 ) -> pathlib.Path:
     """Creates a dataset of voxelized amino acid frames.
 
@@ -774,6 +761,8 @@ def make_frame_dataset(
         The number of voxels per edge that the cube of space will be converted into i.e.
         the final cube will be `voxels_per_side`^3. This must be a odd, positive integer
         so that the CA atom can be placed at the centre of the frame.
+    codec: object
+        Codec object with encoding instructions.
     atom_filter_fn: ampal.Atom -> bool
         A function used to preprocess structures to remove atoms that are not to be
         included in the final structure. By default water and side chain atoms will be
@@ -791,9 +780,6 @@ def make_frame_dataset(
         If True, the user will be prompted to start creating the dataset.
     encode_cb: bool
         Whether to encode the Cb at an average position in the frame.
-    atom_encoder: str
-        Whether to encode the frames as C, N, O or have additional channels for Ca and Cb.
-        Options available are: "CNO", "CNOCB", "CNOCBCA".
     Returns
     -------
     output_file_path: pathlib.Path
@@ -861,7 +847,7 @@ def make_frame_dataset(
         gzipped=gzipped,
         verbosity=verbosity,
         encode_cb=encode_cb,
-        atom_encoder=atom_encoder,
+        codec=codec,
     )
     return output_file_path
 
@@ -965,8 +951,9 @@ def make_frame_dataset(
 @click.option(
     "-ae",
     "--atom_encoder",
-    type=str,
+    type=click.Choice(["CNO", "CNOCB", "CNOCBCA"]),
     default="CNO",
+    required=True,
     help=(
         "Encodes atoms in different channels, depending on atom types. Default is CNO, other options are ´CNOCB´ and `CNOCBCA` to encode the Cb or Cb and Ca in different channels respectively."
     ),
@@ -1036,19 +1023,29 @@ def cli(
             f"use the recursive flag?"
         )
         sys.exit()
+
+    if atom_encoder == "CNO":
+        codec = Codec.CNO()
+    elif atom_encoder == "CNOCB":
+        codec = Codec.CNOCB()
+    elif atom_encoder == "CNOCBCA":
+        codec = Codec.CNOCBCA()
+    else:
+        assert atom_encoder in ["CNO", "CNOCB", "CNOCBCA"], f"Expected encoder to be CNO, CNOCB, CNOCBCA but got {atom_encoder}"
+
     make_frame_dataset(
-        structure_files,
-        output_folder,
-        name,
-        frame_edge_length,
-        voxels_per_side,
-        default_atom_filter,
-        pieces_filter_file,
-        processes,
-        gzipped,
-        verbose,
+        structure_files=structure_files,
+        output_folder=output_folder,
+        name=name,
+        frame_edge_length=frame_edge_length,
+        voxels_per_side=voxels_per_side,
+        codec=codec,
+        atom_filter_fn=default_atom_filter,
+        pieces_filter_file=pieces_filter_file,
+        processes=processes,
+        gzipped=gzipped,
+        verbosity=verbose,
         encode_cb=encode_cb,
-        atom_encoder=atom_encoder,
     )
     return
 
