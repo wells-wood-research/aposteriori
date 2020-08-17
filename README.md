@@ -78,6 +78,13 @@ cd aposteriori/
 poetry install
 ```
 
+In case you get an error about Python Versions (eg. if your python version is >3.7), we suggest you use pyenv. 
+
+```sh
+pyenv install 3.7.0
+pyenv local 3.7.0
+```
+
 You can then use either `poetry shell` to activate the development environment or use
 `poetry run` to execute single commands in the environment:
 

@@ -26,7 +26,7 @@ mypy = "^0.770"
 hypothesis = "^5.8.0"
 
 [tool.poetry.scripts]
-make-frame-dataset = "aposteriori.data_prep.create_frame_data_set:cli"
+make-frame-dataset = "aposteriori.data_prep.cli:cli"
 
 [build-system]
 requires = ["poetry>=1.0"]
