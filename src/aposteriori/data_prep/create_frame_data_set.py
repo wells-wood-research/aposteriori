@@ -16,12 +16,11 @@ import warnings
 
 import ampal
 import ampal.geometry as geometry
-import click
 import h5py
 import numpy as np
 
 from ampal.amino_acids import standard_amino_acids
-from aposteriori.dnn.config import UNCOMMON_RESIDUE_DICT
+from aposteriori.dnn.config import UNCOMMON_RESIDUE_DICT, MAKE_FRAME_DATASET_VER
 
 
 # {{{ Types
@@ -35,10 +34,13 @@ class ResidueResult:
 
 @dataclass
 class DatasetMetadata:
+    make_frame_dataset_ver: str
+    frame_dims: t.Tuple[int, int, int, int]
     atom_encoder: t.List[str]
     encode_cb: bool
     atom_filter_fn: str
     residue_encoder: t.List[str]
+    frame_edge_length: float
 
     @classmethod
     def import_metadata_dict(cls, meta_dict: t.Dict[str, t.Any]):
@@ -307,12 +309,12 @@ def create_residue_frame(
     frame: ndarray
         Numpy array containing the discrete representation of a cube of space around the
         residue.
-    
+
     Raises
     ------
     AssertionError
         Raised if:
-        
+
         * If any atom does not have an element label.
         * If any residue does not have a three letter `mol_code` i.e. "LYS" etc
         * If any voxel is already occupied
@@ -456,7 +458,11 @@ def create_frames_from_structure(
             if isinstance(residue, ampal.Residue):
                 # Create voxelised frame:
                 array = create_residue_frame(
-                    residue, frame_edge_length, voxels_per_side, encode_cb, codec,
+                    residue=residue,
+                    frame_edge_length=frame_edge_length,
+                    voxels_per_side=voxels_per_side,
+                    encode_cb=encode_cb,
+                    codec=codec,
                 )
                 encoded_residue = encode_residue(residue.mol_code)
                 # Save results:
@@ -596,7 +602,9 @@ def save_results(
                             )
                             continue
                         res_dataset = chain_group.create_dataset(
-                            res_result.residue_id, data=res_result.data, dtype=bool,
+                            res_result.residue_id,
+                            data=res_result.data,
+                            dtype=bool,
                         )
                         res_dataset.attrs["label"] = res_result.label
                         res_dataset.attrs[
@@ -631,7 +639,7 @@ def process_paths(
     output_path: pathlib.Path
         Path where dataset will be written.
     frame_edge_length: float
-        The length of the edges of the frame.
+        The length of the edges of the frame in Angstroms.
     voxels_per_side: int
         The number of voxels per edge that the cube of space will be converted into i.e.
         the final cube will be `voxels_per_side`^3. This must be a odd, positive integer
@@ -686,10 +694,18 @@ def process_paths(
             for proc_i in range(processes)
         ]
         metadata = DatasetMetadata(
-            list(codec.atomic_labels),
-            encode_cb,
-            str(atom_filter_fn),
-            list(standard_amino_acids.values()),
+            make_frame_dataset_ver=MAKE_FRAME_DATASET_VER,
+            frame_dims=(
+                voxels_per_side,
+                voxels_per_side,
+                voxels_per_side,
+                codec.encoder_length,
+            ),
+            atom_encoder=list(codec.atomic_labels),
+            encode_cb=encode_cb,
+            atom_filter_fn=str(atom_filter_fn),
+            residue_encoder=list(standard_amino_acids.values()),
+            frame_edge_length=frame_edge_length,
         )
         storer = mp.Process(
             target=save_results,
@@ -850,6 +866,4 @@ def make_frame_dataset(
         codec=codec,
     )
     return output_file_path
-
-
 # }}}

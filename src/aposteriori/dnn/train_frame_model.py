@@ -14,6 +14,7 @@ from aposteriori.dnn.config import *
 from aposteriori.dnn.data_processing.tools import (
     balance_dataset,
     create_flat_dataset_map,
+    extract_metadata_from_dataset,
 )
 from aposteriori.dnn.data_processing.discretization import (
     FrameDiscretizedProteinsSequence,
@@ -36,15 +37,17 @@ if __name__ == "__main__":
     sys.excepthook = log_uncaught_exceptions
     logger = logging.getLogger(__name__)
     logger.info(f"Starting training at {CURRENT_DATE}\n")
+    # Extract Metadata + Check compatibility of dataset:
+    dataset_metadata = extract_metadata_from_dataset(HDF5_STRUCTURES_PATH)
     logger.info(
         f"Configuration: "
-        f"{{Batch size: {BATCH_SIZE}, Epochs: {EPOCHS}, "
-        f"Voxels per side: {VOXELS_PER_SIDE}, Shuffle: {SHUFFLE}, "
-        f"Loss function: {LOSS_FUNC}, Frame edge length (A): {FRAME_EDGE_LENGTH} "
+        f"{{Dataset Metadata: {str(dataset_metadata)}, "
+        f"Batch size: {BATCH_SIZE}, Epochs: {EPOCHS}, "
+        f"Shuffle: {SHUFFLE}, Loss function: {LOSS_FUNC}, "
         f"Activation function: {ACTIVATION_FUNC}, "
-        f"Optimizer: {OPTIMIZER}}}"
+        f"Optimizer: {OPTIMIZER}}} "
     )
-
+    # Flattens data structure for balancing / simpler processing.
     flat_dataset_map = create_flat_dataset_map(HDF5_STRUCTURES_PATH)
     logger.info(f"Started with {len(flat_dataset_map)} frames.\n")
     if BALANCE_RESIDUES:
@@ -59,12 +62,10 @@ if __name__ == "__main__":
     TRAINING_SET = FrameDiscretizedProteinsSequence(
         dataset_map=training_data,
         dataset_path=HDF5_STRUCTURES_PATH,
-        voxels_per_side=VOXELS_PER_SIDE,
     )
     VALIDATION_SET = FrameDiscretizedProteinsSequence(
         dataset_map=training_data,
         dataset_path=HDF5_STRUCTURES_PATH,
-        voxels_per_side=VOXELS_PER_SIDE,
     )
     logger.info(
         f"Training Set: {len(TRAINING_SET)}, Validation Set: {len(VALIDATION_SET)}"
@@ -72,13 +73,13 @@ if __name__ == "__main__":
 
     # Define Model:
     tensorflow.keras.utils.get_custom_objects()["top_3_cat_acc"] = top_3_cat_acc
-    model = create_frame_2d7_model(INPUT_SHAPE_FRAME)
+    model = create_frame_2d7_model(dataset_metadata.frame_dims)
     model.compile(loss=LOSS_FUNC, optimizer=OPTIMIZER, metrics=METRICS)
     model.summary(print_fn=lambda x: logging.info(x + "\n"))
 
     # Architecture Plots:
     try:
-        _ = plot_model(model, OUTPUT_DIR / "model_architecture.svg", show_shapes=True)
+        _ = plot_model(model, str(OUTPUT_DIR / "model_architecture.svg"), show_shapes=True)
     except ValueError:
         pass
 
@@ -106,4 +107,4 @@ if __name__ == "__main__":
 
     # Visualization of the entropy of predictions:
     if VISUALIZE_ENTROPY_AFTER_TRAINING:
-        visualize_model_entropy()
+        visualize_model_entropy(dataset_metadata)

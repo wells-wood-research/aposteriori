@@ -32,20 +32,6 @@ class FrameDiscretizedProteinsSequence(keras.utils.Sequence):
           ('1ek9', 'A', '81', 'TRP')
            ...]
 
-      voxels_per_side : int
-          Length of the edge of the frame unit
-
-                   +--------+
-                  /        /|
-                 /        / |
-                +--------+  |
-                |        |  |
-                |        |  +
-                |        | /
-                |        |/
-                +--------+
-                <- this ->
-
       batch_size : int
           Number of data points considered at once
 
@@ -58,13 +44,11 @@ class FrameDiscretizedProteinsSequence(keras.utils.Sequence):
         self,
         dataset_path: Path,
         dataset_map: t.List[t.Tuple],
-        voxels_per_side: int,
         batch_size: int = 32,
         shuffle: bool = True,
     ):
         self.dataset_path = dataset_path
         self.dataset_map = dataset_map
-        self.voxels_per_side = voxels_per_side
         self.batch_size = batch_size
         self.shuffle = shuffle
 
@@ -76,13 +60,7 @@ class FrameDiscretizedProteinsSequence(keras.utils.Sequence):
     def __getitem__(self, index):
         # Open hdf5:
         with h5py.File(str(self.dataset_path), "r") as dataset:
-            dims = (
-                self.voxels_per_side,
-                self.voxels_per_side,
-                self.voxels_per_side,
-                int(float(dataset.attrs["encoder_length"])),
-            )
-
+            dims = dataset.attrs["frame_dims"]
             X = np.empty((self.batch_size, *dims), dtype=bool)
             y = np.empty((self.batch_size, 20), dtype=bool)
             data_point_batch = self.dataset_map[
@@ -95,8 +73,6 @@ class FrameDiscretizedProteinsSequence(keras.utils.Sequence):
                 X[i] = residue_frame
                 # Extract residue label:
                 y[i] = dataset[pdb_code][chain_id][residue_id].attrs["encoded_residue"]
-        # Encode residue label:
-        # encoded_y = self.residue_encoder.transform(y.reshape(-1, 1))
         return X, y
 
     def on_epoch_end(self):

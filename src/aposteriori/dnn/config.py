@@ -11,19 +11,16 @@ from tensorflow.python.client import device_lib
 from tensorflow.keras.optimizers import Adam
 
 # Config paths
+MAKE_FRAME_DATASET_VER = "0.1.0"
 PROJECT_ROOT_DIR = pathlib.Path(__file__).parent
 DATA_FOLDER = PROJECT_ROOT_DIR / "data"
 TRAINING_PATH = DATA_FOLDER / "cnos_contig_training_balanced_small.pickle"
 VALIDATION_PATH = DATA_FOLDER / "cnos_contig_validation_balanced_small.pickle"
 TRAINING_PATH_FRAME = DATA_FOLDER / "cnos_training_balanced_r20.pickle"
 VALIDATION_PATH_FRAME = DATA_FOLDER / "cnos_validation_balanced_r20.pickle"
-# TRAINING_PATH_FRAME = "cnos_training_balanced_r20.pickle"
-# VALIDATION_PATH_FRAME = "cnos_validation_balanced_r20.pickle"
-# TODO: Refactor below:
 # PIECES_DATA_PATH = pathlib.Path(
 #     "../../structural_data/dnn_data/2-pc90-pieces-high-res.h5"
 # )
-PIECES_DATA_PATH = DATA_FOLDER / "2-pc90-pieces-high-res.h5"
 PIECES_DATA_PATH = DATA_FOLDER / "frame_dataset.h5"
 
 CURRENT_DATE = datetime.now().strftime("_%Y-%m-%d %H:%M:%S")
@@ -45,15 +42,6 @@ TENSORBOARD_OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 WRITE_GRADS = False  # write_grads = True breaks 1D CNN
 HISTOGRAM_FREQ = 0
 UPDATE_FREQ = "batch"
-
-# Local configs:
-VOXELS_PER_SIDE = 21
-FRAME_EDGE_LENGTH = 12
-# TODO: This should be obtained from the data file:
-ATOMIC_NUMBERS = [6, 7, 8]
-UNITS = 11
-INPUT_SHAPE = (UNITS, VOXELS_PER_SIDE, VOXELS_PER_SIDE, VOXELS_PER_SIDE, len(ATOMIC_NUMBERS))
-INPUT_SHAPE_FRAME = (VOXELS_PER_SIDE, VOXELS_PER_SIDE, VOXELS_PER_SIDE, len(ATOMIC_NUMBERS))
 
 # Network:
 BATCH_SIZE = 64
@@ -108,6 +96,7 @@ tensorflow.keras.backend.set_session(session)
 devices = device_lib.list_local_devices()
 [print(d.name) for d in devices]
 
+# General Biology Settings:
 RESIDUES_THREE_TO_ONE_LETTER = {
     "CYS": "C",
     "ASP": "D",

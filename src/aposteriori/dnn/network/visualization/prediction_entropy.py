@@ -11,19 +11,19 @@ from scipy.stats import entropy
 
 from aposteriori.dnn.config import (
     ANNOTATED_ENTROPY_PDB_PATH,
-    FRAME_EDGE_LENGTH,
+    # FRAME_EDGE_LENGTH,
     PDB_PATH,
     PDB_CODES,
     FRAME_CONV_MODEL,
     PDB_REQUEST_URL,
     SAVE_ANNOTATED_PDB_TO_FILE,
-    VOXELS_PER_SIDE,
+    # VOXELS_PER_SIDE,
 )
 from aposteriori.dnn.network.analysis.callbacks import top_3_cat_acc
 from aposteriori.dnn.data_processing.discretization import (
     FrameDiscretizedProteinsSequence,
 )
-from aposteriori.data_prep.create_frame_data_set import make_frame_dataset
+from aposteriori.data_prep.create_frame_data_set import make_frame_dataset, Codec, DatasetMetadata
 from aposteriori.dnn.data_processing.tools import create_flat_dataset_map
 
 
@@ -135,12 +135,11 @@ def calculate_prediction_entropy(residue_predictions: list) -> list:
 
 
 def visualize_model_entropy(
+    dataset_metadata: DatasetMetadata,
     model_path: Path = FRAME_CONV_MODEL,
     pdb_codes: list = PDB_CODES,
     save_annotated_pdb_to_file: bool = SAVE_ANNOTATED_PDB_TO_FILE,
     output_folder: Path = ANNOTATED_ENTROPY_PDB_PATH,
-    voxels_per_side: int = VOXELS_PER_SIDE,
-    frame_edge_length: int = FRAME_EDGE_LENGTH,
 ) -> t.List[ampal.Assembly]:
     """
     Visualize Shannon entropy on pdb structures. PDB codes are downloaded
@@ -148,6 +147,8 @@ def visualize_model_entropy(
 
     Parameters
     ----------
+    dataset_metadata: DatasetMetadata
+        Metadata of the Dataset used to generate the model.
     model_path: Path
         Path to aposteriori model.
     pdb_codes: List of str
@@ -156,21 +157,6 @@ def visualize_model_entropy(
         Whether to save the annotated pdb to file.
     output_folder: Path
         Path to folder to save the pdb file
-    voxels_per_side: int
-        Number of voxels per side
-    frame_edge_length: int
-        Length of the edge of the frame unit in Angstroms.
-
-               +--------+
-              /        /|
-             /        / |
-            +--------+  |
-            |        |  |
-            |        |  +
-            |        | /
-            |        |/
-            +--------+
-            <- this ->
 
     Returns
     -------
@@ -179,6 +165,14 @@ def visualize_model_entropy(
     """
     pdb_paths = [_fetch_pdb(pdb_code) for pdb_code in pdb_codes]
 
+    # Set up codec:
+    if dataset_metadata.atom_encoder == list("CNO"):
+        codec = Codec.CNO()
+    elif dataset_metadata.atom_encoder == list("CNOCB"):
+        codec = Codec.CNOCB()
+    elif dataset_metadata.atom_encoder == list("CNOCBCA"):
+        codec = Codec.CNOCBCA()
+
     annotated_pdbs = []
     for pdb_path in pdb_paths:
         # Voxelise pdb:
@@ -186,8 +180,9 @@ def visualize_model_entropy(
             structure_files=[pdb_path],
             output_folder=output_folder,
             name=str(pdb_path),
-            voxels_per_side=voxels_per_side,
-            frame_edge_length=frame_edge_length,
+            voxels_per_side=dataset_metadata.frame_dims[0],
+            frame_edge_length=dataset_metadata.frame_edge_length,
+            codec=codec,
         )
 
         flat_dataset_map = create_flat_dataset_map(voxelised_dataset)
@@ -195,7 +190,6 @@ def visualize_model_entropy(
         discretized_dataset = FrameDiscretizedProteinsSequence(
             dataset_map=flat_dataset_map,
             dataset_path=voxelised_dataset,
-            voxels_per_side=voxels_per_side,
             shuffle=False,
             batch_size=1,
         )
@@ -223,7 +217,3 @@ def visualize_model_entropy(
                 f.write(curr_annotated_structure.pdb)
 
     return annotated_pdbs
-
-
-if __name__ == "__main__":
-    _ = visualize_model_entropy()
