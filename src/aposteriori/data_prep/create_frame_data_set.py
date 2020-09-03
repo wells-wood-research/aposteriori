@@ -12,34 +12,151 @@ import pathlib
 import sys
 import time
 import typing as t
+import warnings
 
 import ampal
 import ampal.geometry as geometry
-import click
 import h5py
 import numpy as np
+
+from ampal.amino_acids import standard_amino_acids
+from aposteriori.dnn.config import UNCOMMON_RESIDUE_DICT, MAKE_FRAME_DATASET_VER
+
 
 # {{{ Types
 @dataclass
 class ResidueResult:
     residue_id: str
     label: str
+    encoded_residue: np.ndarray
     data: np.ndarray
+
+
+@dataclass
+class DatasetMetadata:
+    make_frame_dataset_ver: str
+    frame_dims: t.Tuple[int, int, int, int]
+    atom_encoder: t.List[str]
+    encode_cb: bool
+    atom_filter_fn: str
+    residue_encoder: t.List[str]
+    frame_edge_length: float
+
+    @classmethod
+    def import_metadata_dict(cls, meta_dict: t.Dict[str, t.Any]):
+        """
+        Imports metada of a dataset from a dictionary object to the DatasetMetadata class.
+
+        Parameters
+        ----------
+        meta_dict: t.Dict[str, t.Any]
+            Dictionary of metadata parameters for the dataset.
+
+        Returns
+        -------
+        DatasetMetadata dataclass with filled metadata.
+
+        """
+        return cls(**meta_dict)
 
 
 StrOrPath = t.Union[str, pathlib.Path]
 ChainDict = t.Dict[str, t.List[ResidueResult]]
-
-
 # }}}
+
+
 # {{{ Residue Frame Creation
+class Codec:
+    def __init__(self, atomic_labels: t.List[str]):
+        # Set attributes:
+        self.atomic_labels = atomic_labels
+        self.encoder_length = len(self.atomic_labels)
+        self.label_to_encoding = dict(
+            zip(self.atomic_labels, range(self.encoder_length))
+        )
+        self.encoding_to_label = dict(
+            zip(range(self.encoder_length), self.atomic_labels)
+        )
+        return
+
+    # Labels Class methods:
+    @classmethod
+    def CNO(cls):
+        return cls(["C", "N", "O"])
+
+    @classmethod
+    def CNOCB(cls):
+        return cls(["C", "N", "O", "CB"])
+
+    @classmethod
+    def CNOCBCA(cls):
+        return cls(["C", "N", "O", "CB", "CA"])
+
+    def encode_atom(self, atom_label: str) -> np.ndarray:
+        """
+        Encodes atoms in a boolean array depending on the type of encoding chosen.
+
+        Parameters
+        ----------
+        atom_label: str
+            Label of the atom to be encoded.
+
+        Returns
+        -------
+        atom_encoding: np.ndarray
+            Boolean array with atom encoding of shape (encoder_length,)
+
+        """
+        # Creating empty atom encoding:
+        encoded_atom = np.zeros(self.encoder_length, dtype=bool)
+        # Attempt encoding:
+        if atom_label in list(self.label_to_encoding.keys()):
+            atom_idx = self.label_to_encoding[atom_label]
+            encoded_atom[atom_idx] = True
+        # Encode CA as C in case it is not in the labels:
+        elif atom_label == "CA":
+            atom_idx = self.label_to_encoding["C"]
+            encoded_atom[atom_idx] = True
+        else:
+            warnings.warn(
+                f"{atom_label} not found in {self.atomic_labels} encoding. Returning None."
+            )
+
+        return encoded_atom
+
+    def decode_atom(self, encoded_atom: np.ndarray) -> t.Optional[str]:
+        """
+        Decodes atoms into string depending on the type of encoding chosen.
+
+        Parameters
+        ----------
+        encoded_atom: np.ndarray
+            Boolean array with atom encoding of shape (encoder_length,)
+
+        Returns
+        -------
+        decoded_atom: t.Optional[str]
+            Label of the decoded atom.
+        """
+        # Get True index of one-hot encoding
+        atom_encoding = np.nonzero(encoded_atom)[0]
+
+        if atom_encoding.size == 0:
+            warnings.warn(f"Encoded atom was 0.")
+        # If not Empty space:
+        else:
+            # Decode Atom:
+            decoded_atom = self.encoding_to_label[atom_encoding[0]]
+            return decoded_atom
+
+
 def align_to_residue_plane(residue: ampal.Residue):
     """Reorients the parent ampal.Assembly that the peptide plane lies on xy.
-    
+
     Notes
     -----
     This changes the assembly **in place**.
-    
+
     Parameters
     ----------
     residue: ampal.Residue
@@ -69,6 +186,26 @@ def align_to_residue_plane(residue: ampal.Residue):
     # align C with xy plane
     rotation_angle = geometry.dihedral(unit_x, origin, unit_y, residue["C"])
     assembly.rotate(-rotation_angle, unit_y)
+
+    return
+
+
+def encode_cb_to_ampal_residue(residue: ampal.Residue):
+    """
+    Encodes a Cb atom to an AMPAL residue. The Cb is added to an average position
+    calculated by averaging the Cb coordinates of the aligned frames for the 1QYS protein.
+
+    Parameters
+    ----------
+    residue: ampal.Residue
+        Focus residues that requires the Cb atom.
+
+    """
+    avg_cb_position = (-0.741287356, -0.53937931, -1.224287356)
+    cb_atom = ampal.base_ampal.Atom(
+        avg_cb_position, element="C", res_label="CB", parent=residue
+    )
+    residue["CB"] = cb_atom
     return
 
 
@@ -101,15 +238,57 @@ def discretize(
     )
 
 
+def encode_residue(residue: str) -> np.ndarray:
+    """
+    One-Hot Encodes a residue string to a numpy array. Attempts to convert non-standard
+    residues using AMPAL's UNCOMMON_RESIDUE_DICT.
+
+    Parameters
+    ----------
+    residue: str
+        Residue label of the frame.
+
+    Returns
+    -------
+    residue_encoding: np.ndarray
+        One-Hot encoding of the residue with shape (20,)
+    """
+    std_residues = list(standard_amino_acids.values())
+    residue_encoding = np.zeros(len(std_residues), dtype=bool)
+
+    # Deal with non-standard residues:
+    if residue not in std_residues:
+        if residue in UNCOMMON_RESIDUE_DICT.keys():
+            warnings.warn(f"{residue} is not a standard residue.")
+            residue_label = UNCOMMON_RESIDUE_DICT[residue]
+            warnings.warn(f"Residue converted to {residue}.")
+        else:
+            assert (
+                residue in UNCOMMON_RESIDUE_DICT.keys()
+            ), f"Expected natural amino acid, attempted conversion from uncommon residues, but got {residue}."
+    else:
+        residue_label = residue
+
+    # Add True at the correct residue index:
+    res_idx = std_residues.index(residue_label)
+    residue_encoding[res_idx] = 1
+
+    return residue_encoding
+
+
 def create_residue_frame(
-    residue: ampal.Residue, frame_edge_length: float, voxels_per_side: int,
+    residue: ampal.Residue,
+    frame_edge_length: float,
+    voxels_per_side: int,
+    encode_cb: bool,
+    codec: object,
 ) -> np.ndarray:
     """Creates a discrete representation of a volume of space around a residue.
-    
+
     Notes
     -----
     We use the term "frame" to refer to a cube of space around a residue.
-    
+
     Parameters
     ----------
     residue: ampal.Residue
@@ -120,18 +299,22 @@ def create_residue_frame(
         The number of voxels per edge that the cube of space will be converted into i.e.
         the final cube will be `voxels_per_side`^3. This must be a odd, positive integer
         so that the CA atom can be placed at the centre of the frame.
-    
+    encode_cb: bool
+        Whether to encode the Cb at an average position in the frame.
+    codec: object
+        Codec object with encoding instructions.
+
     Returns
     -------
     frame: ndarray
         Numpy array containing the discrete representation of a cube of space around the
         residue.
-    
+
     Raises
     ------
     AssertionError
         Raised if:
-        
+
         * If any atom does not have an element label.
         * If any residue does not have a three letter `mol_code` i.e. "LYS" etc
         * If any voxel is already occupied
@@ -143,9 +326,14 @@ def create_residue_frame(
     chain = residue.parent
 
     align_to_residue_plane(residue)
-    # create an empty array for discrete frame
+    # Create a Cb atom at avg postion:
+    if "CB" in codec.atomic_labels:
+        if encode_cb:
+            encode_cb_to_ampal_residue(residue)
+
     frame = np.zeros(
-        (voxels_per_side, voxels_per_side, voxels_per_side), dtype=np.uint8
+        (voxels_per_side, voxels_per_side, voxels_per_side, codec.encoder_length),
+        dtype=bool,
     )
     # iterate through all atoms within the frame
     for atom in (
@@ -166,17 +354,27 @@ def create_residue_frame(
             f"Residue mol_code should not be blank:\n"
             f"{cha.id}:{res.id}:{atom.res_label}"
         )
-        assert frame[indices] == 0, (
+        np.testing.assert_array_equal(
+            frame[indices], np.array([False] * len(frame[indices]), dtype=bool)
+        )
+        assert frame[indices][0] == False, (
             f"Voxel should not be occupied: Currently "
             f"{frame[indices]}, "
             f"{ass.id}:{cha.id}:{res.id}:{atom.res_label}"
         )
-        element_data = ampal.data.ELEMENT_DATA[atom.element.capitalize()]
-        frame[indices] = element_data["atomic number"]
+        frame[indices] = Codec.encode_atom(codec, atom.res_label)
     centre = voxels_per_side // 2
-    assert (
-        frame[centre, centre, centre] == 6
-    ), f"The central atom should be carbon, but it is {frame[centre, centre, centre]}."
+
+    # Check whether central atom is C:
+    if "CA" in codec.atomic_labels:
+        assert (
+            frame[centre, centre, centre][4] == 1
+        ), f"The central atom should be Carbon, but it is {frame[centre, centre, centre]}."
+    else:
+        assert (
+            frame[centre, centre, centre][0] == 1
+        ), f"The central atom should be Carbon, but it is {frame[centre, centre, centre]}."
+
     return frame
 
 
@@ -188,6 +386,8 @@ def create_frames_from_structure(
     chain_filter_list: t.Optional[t.List[str]],
     gzipped: bool,
     verbosity: int,
+    encode_cb: bool,
+    codec: object,
 ) -> t.Tuple[str, ChainDict]:
     """Creates residue frames for each residue in the structure.
 
@@ -207,12 +407,16 @@ def create_frames_from_structure(
         removed.
     chain_filter_list: t.Optional[t.List[str]]
         Chains to be processed.
-    processes: int
-        Number of processes to used to process structure files.
     gzipped: bool
         Indicates if structure files are gzipped or not.
     verbosity: int
         Level of logging sent to std out.
+    encode_cb: bool
+        Whether to encode the Cb at an average position in the frame. If
+        True, it will not be filtered by the `atom_filter_fn`.
+    codec: object
+        Codec object with encoding instructions.
+
     """
     name = structure_path.name.split(".")[0]
     chain_dict: ChainDict = {}
@@ -221,6 +425,11 @@ def create_frames_from_structure(
             assembly = ampal.load_pdb(inf.read().decode(), path=False)[0]
     else:
         assembly = ampal.load_pdb(str(structure_path))
+    # Deals with structures from NMR as ampal returns Container of Assemblies
+    if isinstance(assembly, ampal.AmpalContainer):
+        warnings.warn(f"Selecting the first state from the NMR structure {assembly.id}")
+        assembly = assembly[0]
+    # Filters atoms not related to assembly:
     total_atoms = len(list(assembly.get_atoms()))
     for atom in assembly.get_atoms():
         if not atom_filter_fn(atom):
@@ -244,14 +453,25 @@ def create_frames_from_structure(
         if verbosity > 0:
             print(f"{name}:\tProcessing chain {chain.id}...")
         chain_dict[chain.id] = []
+        # Loop through each residue, voxelis:
         for residue in chain:
             if isinstance(residue, ampal.Residue):
+                # Create voxelised frame:
                 array = create_residue_frame(
-                    residue, frame_edge_length, voxels_per_side
+                    residue=residue,
+                    frame_edge_length=frame_edge_length,
+                    voxels_per_side=voxels_per_side,
+                    encode_cb=encode_cb,
+                    codec=codec,
                 )
+                encoded_residue = encode_residue(residue.mol_code)
+                # Save results:
                 chain_dict[chain.id].append(
                     ResidueResult(
-                        residue_id=str(residue.id), label=residue.mol_code, data=array,
+                        residue_id=str(residue.id),
+                        label=residue.mol_code,
+                        encoded_residue=encoded_residue,
+                        data=array,
                     )
                 )
                 if verbosity > 1:
@@ -264,11 +484,23 @@ def create_frames_from_structure(
 # }}}
 # {{{ Dataset Creation
 def default_atom_filter(atom: ampal.Atom) -> bool:
-    """Filters for all heavy protein backbone atoms."""
+    """Filters all heavy protein backbone atoms."""
     backbone_atoms = ("N", "CA", "C", "O")
     if atom.element == "H":
         return False
     elif isinstance(atom.parent, ampal.Residue) and (atom.res_label in backbone_atoms):
+        return True
+    else:
+        return False
+
+
+def keep_sidechain_cb_atom_filter(atom: ampal.Atom) -> bool:
+    """Filters all heavy protein backbone atoms and the Beta Carbon of
+    the side-chain."""
+    atoms_to_keep = ("N", "CA", "C", "O", "CB")
+    if atom.element == "H":
+        return False
+    elif isinstance(atom.parent, ampal.Residue) and (atom.res_label in atoms_to_keep):
         return True
     else:
         return False
@@ -284,6 +516,8 @@ def process_single_path(
     errors: t.Dict[str, str],
     gzipped: bool,
     verbosity: int,
+    encode_cb: bool,
+    codec: object,
 ):
     """Processes a path and puts the results into a queue."""
     chain_filter_list: t.Optional[t.List[str]]
@@ -306,6 +540,8 @@ def process_single_path(
                 chain_filter_list,
                 gzipped,
                 verbosity,
+                encode_cb,
+                codec,
             )
         except Exception as e:
             result = str(e)
@@ -322,6 +558,7 @@ def save_results(
     complete: mp.Value,
     frames: mp.Value,
     verbosity: int,
+    metadata: DatasetMetadata,
 ):
     """Saves voxelized structures to a hdf5 object."""
     with h5py.File(str(h5_path), "w") as hd5:
@@ -336,6 +573,12 @@ def save_results(
             if pdb_code in hd5:
                 print(f"{pdb_code}:\t\tError PDB already found in dataset skipping.")
             else:
+                # Encode metadata:
+                metadata_dict = metadata.__dict__
+                # Loop through metadata dataclass and add it as attribute:
+                for meta, meta_attribute in metadata_dict.items():
+                    hd5.attrs[str(meta)] = meta_attribute
+
                 pdb_group = hd5.create_group(pdb_code)
                 for chain_id, res_results in chain_dict.items():
                     if verbosity > 0:
@@ -359,9 +602,14 @@ def save_results(
                             )
                             continue
                         res_dataset = chain_group.create_dataset(
-                            res_result.residue_id, data=res_result.data, dtype="u8"
+                            res_result.residue_id,
+                            data=res_result.data,
+                            dtype=bool,
                         )
                         res_dataset.attrs["label"] = res_result.label
+                        res_dataset.attrs[
+                            "encoded_residue"
+                        ] = res_result.encoded_residue
                         frames.value += 1
                 print(f"{pdb_code}: Finished processing.")
             complete.value += 1
@@ -379,6 +627,8 @@ def process_paths(
     processes: int,
     gzipped: bool,
     verbosity: int,
+    encode_cb: bool,
+    codec: object,
 ):
     """Discretizes a list of structures and stores them in a HDF5 object.
 
@@ -389,7 +639,7 @@ def process_paths(
     output_path: pathlib.Path
         Path where dataset will be written.
     frame_edge_length: float
-        The length of the edges of the frame.
+        The length of the edges of the frame in Angstroms.
     voxels_per_side: int
         The number of voxels per edge that the cube of space will be converted into i.e.
         the final cube will be `voxels_per_side`^3. This must be a odd, positive integer
@@ -398,15 +648,18 @@ def process_paths(
         A function used to preprocess structures to remove atoms that are not to be
         included in the final structure. By default water and side chain atoms will be
         removed.
-    pieces_filter_file: Optional[StrOrPath]
-        A path to a Pieces file that will be used to filter the input files and specify
-        chains to be included in the dataset.
+    chain_filter_dict: t.Optional[t.Dict[str, t.List[str]]]
+        Chains to be selected from the PDB file.
     processes: int
         Number of processes to used to process structure files.
     gzipped: bool
         Indicates if structure files are gzipped or not.
     verbosity: int
         Level of logging sent to std out.
+    encode_cb: bool
+        Whether to encode the Cb at an average position in the frame.
+    codec: object
+        Codec object with encoding instructions.
     """
 
     with mp.Manager() as manager:
@@ -434,13 +687,37 @@ def process_paths(
                     errors,
                     gzipped,
                     verbosity,
+                    encode_cb,
+                    codec,
                 ),
             )
             for proc_i in range(processes)
         ]
+        metadata = DatasetMetadata(
+            make_frame_dataset_ver=MAKE_FRAME_DATASET_VER,
+            frame_dims=(
+                voxels_per_side,
+                voxels_per_side,
+                voxels_per_side,
+                codec.encoder_length,
+            ),
+            atom_encoder=list(codec.atomic_labels),
+            encode_cb=encode_cb,
+            atom_filter_fn=str(atom_filter_fn),
+            residue_encoder=list(standard_amino_acids.values()),
+            frame_edge_length=frame_edge_length,
+        )
         storer = mp.Process(
             target=save_results,
-            args=(result_queue, output_path, total_paths, complete, frames, verbosity),
+            args=(
+                result_queue,
+                output_path,
+                total_paths,
+                complete,
+                frames,
+                verbosity,
+                metadata,
+            ),
         )
         all_processes = workers + [storer]
         for proc in all_processes:
@@ -475,12 +752,14 @@ def make_frame_dataset(
     name: str,
     frame_edge_length: float,
     voxels_per_side: int,
+    codec: object,
     atom_filter_fn: t.Callable[[ampal.Atom], bool] = default_atom_filter,
     pieces_filter_file: t.Optional[StrOrPath] = None,
     processes: int = 1,
     gzipped: bool = False,
     verbosity: int = 1,
     require_confirmation: bool = True,
+    encode_cb: bool = True,
 ) -> pathlib.Path:
     """Creates a dataset of voxelized amino acid frames.
 
@@ -498,6 +777,8 @@ def make_frame_dataset(
         The number of voxels per edge that the cube of space will be converted into i.e.
         the final cube will be `voxels_per_side`^3. This must be a odd, positive integer
         so that the CA atom can be placed at the centre of the frame.
+    codec: object
+        Codec object with encoding instructions.
     atom_filter_fn: ampal.Atom -> bool
         A function used to preprocess structures to remove atoms that are not to be
         included in the final structure. By default water and side chain atoms will be
@@ -513,7 +794,8 @@ def make_frame_dataset(
         Level of logging sent to std out.
     require_confirmation: bool
         If True, the user will be prompted to start creating the dataset.
-
+    encode_cb: bool
+        Whether to encode the Cb at an average position in the frame.
     Returns
     -------
     output_file_path: pathlib.Path
@@ -580,176 +862,8 @@ def make_frame_dataset(
         chain_filter_dict=chain_filter_dict,
         gzipped=gzipped,
         verbosity=verbosity,
+        encode_cb=encode_cb,
+        codec=codec,
     )
     return output_file_path
-
-
 # }}}
-# {{{ CLI
-@click.command()
-@click.argument(
-    "structure_file_folder", type=click.Path(exists=True, readable=True),
-)
-@click.option(
-    "-o",
-    "--output-folder",
-    type=click.Path(),
-    default=".",
-    help=("Path to folder where output will be written. Default = `.`"),
-)
-@click.option(
-    "-n",
-    "--name",
-    type=str,
-    default="frame_dataset",
-    help=(
-        "Name used for the dataset file, the `.hdf5` extension does not need to be "
-        "included as it will be appended. Default = `frame_dataset`"
-    ),
-)
-@click.option(
-    "-e",
-    "--extension",
-    type=str,
-    default=".pdb",
-    help=("Extension of structure files to be included. Default = `.pdb`."),
-)
-@click.option(
-    "--pieces-filter-file",
-    type=click.Path(),
-    help=(
-        "Path to a Pieces format file used to filter the dataset to specific chains in"
-        "specific files. All other PDB files included in the input will be ignored."
-    ),
-)
-@click.option(
-    "--frame-edge-length",
-    type=float,
-    default=12.0,
-    help=(
-        "Edge length of the cube of space around each residue that will be voxelized. "
-        "Default = 12.0."
-    ),
-)
-@click.option(
-    "--voxels-per-side",
-    type=int,
-    default=21,
-    help=(
-        "The number of voxels per side of the frame. This will give a final cube of "
-        "`voxels-per-side`^3. Default = 21."
-    ),
-)
-@click.option(
-    "-p",
-    "--processes",
-    type=int,
-    default=1,
-    help=("Number of processes to be used to create the dataset. Default = 1."),
-)
-@click.option(
-    "-z",
-    "--gzipped",
-    is_flag=True,
-    help=(
-        "If True, this flag indicates that the structure files are gzipped. Default = "
-        "False."
-    ),
-)
-@click.option(
-    "-r",
-    "--recursive",
-    is_flag=True,
-    help=("If True, all files in all subfolders will be processed."),
-)
-@click.option(
-    "-v",
-    "--verbose",
-    count=True,
-    help=(
-        "Sets the verbosity of the output, use `-v` for low level output or `-vv` for "
-        "even more information."
-    ),
-)
-def cli(
-    structure_file_folder: str,
-    output_folder: str,
-    name: str,
-    extension: str,
-    pieces_filter_file: str,
-    frame_edge_length: float,
-    voxels_per_side: int,
-    processes: int,
-    gzipped: bool,
-    recursive: bool,
-    verbose: int,
-):
-    """Creates a dataset of voxelized amino acid frames.
-
-    A frame refers to a region of space around an amino acid. For every
-    residue in the input structure(s), a cube of space around the region
-    (with an edge length equal to `--frame_edge_length`, default 12 Å),
-    will be mapped to discrete space, with a defined number of voxels per
-    edge (equal to `--voxels-per-side`, default = 21).
-
-    Basic Usage:
-
-    `make-frame-dataset -o /tmp/ -n test_dataset 1ubq.pdb 1ctf.pdb`
-
-    This command will make a tiny dataset found at `/tmp/test_dataset.hdf5`,
-    containing all residues 1ubq.pdb and 1ctf.pdb
-
-    Globs can be used to define the structure files to be processed.
-    `make-frame-dataset pdb_files/**/*.pdb` would include all `.pdb` files in all
-    subdirectories of the `pdb_files` directory.
-
-    You can process gzipped pdb files, but the program assumes that the format
-    of the file name is similar to `1mkk.pdb.gz`. If you have more complex
-    requirements than this, we recommend using this library directly from
-    Python rather than through this CLI.
-
-    The hdf5 object itself is like a Python dict. The structure is
-    simple:
-
-    hdf5 Contains a number of groups, one for each structure file.
-    └─[pdb_code] Contains a number of subgroups, one for each chain.
-      └─[chain_id] Contains a number of subgroups, one for each residue.
-        └─[residue_id] voxels_per_side^3 array of ints, representing element number.
-          └─.attrs['label'] Three-letter code for the residue.
-
-    So hdf7['1ctf']['A']['58'] would be an array for the voxelized.
-    """
-    structure_folder_path = pathlib.Path(structure_file_folder)
-    structure_files: t.List[StrOrPath] = list(
-        structure_folder_path.glob(f"**/*{extension}")
-        if recursive
-        else structure_folder_path.glob(f"*{extension}")
-    )
-    if not structure_files:
-        print(
-            f"No structure_files found in `{structure_folder_path}`. Did you mean to "
-            f"use the recursive flag?"
-        )
-        sys.exit()
-    make_frame_dataset(
-        structure_files,
-        output_folder,
-        name,
-        frame_edge_length,
-        voxels_per_side,
-        default_atom_filter,
-        pieces_filter_file,
-        processes,
-        gzipped,
-        verbose,
-    )
-    return
-
-
-# }}}
-
-if __name__ == "__main__":
-    # The cli will be run if this file is invoked directly
-    # It is also hooked up as a script in `pyproject.toml`
-    cli()
-

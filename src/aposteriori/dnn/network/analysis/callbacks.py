@@ -5,7 +5,10 @@ import matplotlib.pyplot as plt
 import matplotlib.colors as colors
 import numpy as np
 
-from aposteriori.dnn.analysis.metrics import make_frame_confusion_matrix, make_contig_confusion_matrix
+from aposteriori.dnn.network.analysis.metrics import (
+    make_frame_confusion_matrix,
+    make_contig_confusion_matrix,
+)
 from aposteriori.dnn.config import (
     RESIDUES_THREE_TO_ONE_LETTER,
     BLOSUM_DICT,
@@ -36,7 +39,7 @@ class FrameConfusionPlotter(keras.callbacks.Callback):
         plt.yticks(range(20), self.encoder_categories)
         # Plot Color Bar:
         norm = colors.Normalize()
-        sm = plt.cm.ScalarMappable(cmap='viridis', norm=norm)
+        sm = plt.cm.ScalarMappable(cmap="viridis", norm=norm)
         fig.colorbar(sm).set_label("Confusion Level (Range 0 - 1)")
         # Save to file:
         plt.savefig(self.output_filename.format(epoch=epoch + 1), bbox_inches="tight")
@@ -63,7 +66,7 @@ class ContigConfusionPlotter(keras.callbacks.Callback):
         plt.yticks(range(20), self.encoder_categories)
         # Plot Color Bar:
         norm = colors.Normalize()
-        sm = plt.cm.ScalarMappable(cmap='viridis', norm=norm)
+        sm = plt.cm.ScalarMappable(cmap="viridis", norm=norm)
         fig.colorbar(sm).set_label("Confusion Level (Range 0 - 1)")
         # Save to file:
         plt.savefig(self.output_filename.format(epoch=epoch + 1), bbox_inches="tight")

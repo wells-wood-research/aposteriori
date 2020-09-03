@@ -8,9 +8,9 @@ from tensorflow.keras.layers import (
     GlobalAveragePooling1D,
 )
 
-from tensorflow.keras.models import Model, load_model
+from tensorflow.keras.models import load_model
 from tensorflow.keras import Sequential
-from aposteriori.dnn.analysis.callbacks import top_3_cat_acc
+from aposteriori.dnn.network.analysis.callbacks import top_3_cat_acc
 from tensorflow.keras import utils
 
 from aposteriori.dnn.config import FRAME_CONV_MODEL

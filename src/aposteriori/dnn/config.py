@@ -5,34 +5,29 @@ from datetime import datetime
 
 import matplotlib.pyplot as plt
 import tensorflow as tf
-from tensorflow.python.client import device_lib
 import tensorflow.keras.backend
+from ampal.data import ELEMENT_DATA
+from tensorflow.python.client import device_lib
 from tensorflow.keras.optimizers import Adam
 
 # Config paths
+MAKE_FRAME_DATASET_VER = "0.1.0"
 PROJECT_ROOT_DIR = pathlib.Path(__file__).parent
 DATA_FOLDER = PROJECT_ROOT_DIR / "data"
 TRAINING_PATH = DATA_FOLDER / "cnos_contig_training_balanced_small.pickle"
 VALIDATION_PATH = DATA_FOLDER / "cnos_contig_validation_balanced_small.pickle"
-# TODO: Use more appropriate names:
 TRAINING_PATH_FRAME = DATA_FOLDER / "cnos_training_balanced_r20.pickle"
 VALIDATION_PATH_FRAME = DATA_FOLDER / "cnos_validation_balanced_r20.pickle"
-# TRAINING_PATH_FRAME = "cnos_training_balanced_r20.pickle"
-# VALIDATION_PATH_FRAME = "cnos_validation_balanced_r20.pickle"
-# TODO: Refactor below:
 # PIECES_DATA_PATH = pathlib.Path(
 #     "../../structural_data/dnn_data/2-pc90-pieces-high-res.h5"
 # )
-PIECES_DATA_PATH = DATA_FOLDER / "2-pc90-pieces-high-res.h5"
+PIECES_DATA_PATH = DATA_FOLDER / "frame_dataset.h5"
 
 CURRENT_DATE = datetime.now().strftime("_%Y-%m-%d %H:%M:%S")
-BASE_MODEL = "2c"
-NAME_MODEL = BASE_MODEL + "_prodcnn"
-# TODO: Output folder may need identifier like random number to avoid two
-#  programs running at the same time overriding each others.
+BASE_MODEL = "cnn"
+NAME_MODEL = BASE_MODEL + "_aposteriori"
 OUTPUT_DIR = PROJECT_ROOT_DIR / (NAME_MODEL + CURRENT_DATE)
 OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
-ENCODER_PATH = DATA_FOLDER / "encoders.pickle"
 CONV_LSTM_MODEL = PROJECT_ROOT_DIR / "model" / "conv_lstm.h5"
 FRAME_CONV_MODEL = PROJECT_ROOT_DIR / "model" / "frame_conv.h5"
 LOG_FILENAME = OUTPUT_DIR / ('logs.txt')
@@ -48,18 +43,9 @@ WRITE_GRADS = False  # write_grads = True breaks 1D CNN
 HISTOGRAM_FREQ = 0
 UPDATE_FREQ = "batch"
 
-# Local configs:
-RADIUS = 20
-EDGE_LENGTH = RADIUS*2 + 1
-UNITS = 11
-ATOMIC_NUMBERS = [0, 6, 7, 8, 16]
-# TODO refactor name below for contig
-INPUT_SHAPE = (UNITS, EDGE_LENGTH, EDGE_LENGTH, EDGE_LENGTH, len(ATOMIC_NUMBERS))
-INPUT_SHAPE_FRAME = (EDGE_LENGTH, EDGE_LENGTH, EDGE_LENGTH, len(ATOMIC_NUMBERS))
-
 # Network:
 BATCH_SIZE = 64
-EPOCHS = 200
+EPOCHS = 1
 LOSS_FUNC = "categorical_crossentropy"
 ACTIVATION_FUNC = "relu"
 METRICS = ["accuracy", "top_3_cat_acc"]
@@ -67,19 +53,21 @@ OPTIMIZER = Adam()
 SHUFFLE = True
 WORKERS = 8
 MULTIPROCESSING = True
+BALANCE_RESIDUES = True
 
 # Activation Layer Visualization:
 VISUALIZE_ACTIVATION_AFTER_TRAINING = True
 ATOM_COLORS = {
     # Atomic number : Color
-    6: "black",  # Carbon
-    7: "blue",  # Nitrogen
-    8: "red",  # Oxygen
-    16: "orange",  # Sulphur
+    0: ELEMENT_DATA['C']['CPK'],  # Carbon
+    1: ELEMENT_DATA['N']['CPK'],
+    2: ELEMENT_DATA['O']['CPK'],  # Oxygen
+    3: "orange",  # +1
+    4: "green"  # +2
 }
 FIG_SIZE = (10, 5)
 COLOR_MAP = plt.cm.rainbow
-LOCAL_COLOR_MAP = True
+LOCAL_COLOR_MAP = False
 ACTIVATION_ALPHA = 0.05
 PLOT_DIR = OUTPUT_DIR / ("activation_plot_" + NAME_MODEL)
 PLOT_DIR.mkdir(parents=True, exist_ok=True)
@@ -94,7 +82,7 @@ if SAVE_ANNOTATED_PDB_TO_FILE:
     ANNOTATED_ENTROPY_PDB_PATH.mkdir(parents=True, exist_ok=True)
 PDB_REQUEST_URL = "https://files.rcsb.org/download/"
 PDB_CODES = ["1qys", "6ct4"]
-H5_STRUCTURES_PATH = DATA_FOLDER / "pdb_voxelised.h5"
+HDF5_STRUCTURES_PATH = DATA_FOLDER / "frame_dataset.hdf5"
 REBUILD_H5_DATASET = True
 FETCH_PDB = True
 
@@ -108,6 +96,7 @@ tensorflow.keras.backend.set_session(session)
 devices = device_lib.list_local_devices()
 [print(d.name) for d in devices]
 
+# General Biology Settings:
 RESIDUES_THREE_TO_ONE_LETTER = {
     "CYS": "C",
     "ASP": "D",

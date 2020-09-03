@@ -1,13 +1,11 @@
 import h5py
+from pathlib import Path
 import random
+import typing as t
 
 import numpy as np
 import tensorflow.keras as keras
 from tensorflow.keras.models import load_model
-from ampal.amino_acids import standard_amino_acids
-
-from aposteriori.dnn.data_processing.encoder import encode_data
-from aposteriori.dnn.config import UNCOMMON_RESIDUE_DICT, UNCOMMON_RES_CONVERSION
 
 
 class FrameDiscretizedProteinsSequence(keras.utils.Sequence):
@@ -23,98 +21,63 @@ class FrameDiscretizedProteinsSequence(keras.utils.Sequence):
 
       Attributes
       ----------
-      data_set_path : Path Object or str
+      dataset_path : Path Object or str
           Path to structural data
 
-      data_points : array of tuples
-          [(PDB Code, [Ca coordinates], residue identity of Ca, atom encoder)]
+      dataset_map : list of tuples
+        [(pdb_code, chain_id, residue_id, residue_label)]
 
           eg.
-          [
-          '5c7h.pdb1',
-          (55, 61, 41),
-          'LYS',
-           array([0, 6, 7, 8])
+          [...
+          ('1ek9', 'A', '81', 'TRP')
            ...]
 
-      radius : int
-          Length of the edge of the frame unit
-
-                   +--------+
-                  /        /|
-                 /        / |
-                +--------+  |
-                |        |  |
-                |        |  +
-                |        | /
-                |        |/
-                +--------+
-                <-radius->
-          (this isn't actually a radius, but it gives the idea)
-
       batch_size : int
-          Number of data_points considered at once
+          Number of data points considered at once
 
       shuffle : bool
-          Shuffling of the order of data_points
-
+          Shuffling of the indices of data points
 
       """
 
-    def __init__(self, data_set_path, data_points, radius, batch_size=32, shuffle=True):
-        self.data_set_path = data_set_path
-        self.data_points = data_points
-        self.radius = radius
+    def __init__(
+        self,
+        dataset_path: Path,
+        dataset_map: t.List[t.Tuple],
+        batch_size: int = 32,
+        shuffle: bool = True,
+    ):
+        self.dataset_path = dataset_path
+        self.dataset_map = dataset_map
         self.batch_size = batch_size
         self.shuffle = shuffle
-
-        # Get encoding for atomic numbers and amino acids:
-        self.data_encoder, self.label_encoder = encode_data()
 
         self.on_epoch_end()
 
     def __len__(self):
-        return int(np.floor(len(self.data_points) / self.batch_size))
+        return int(np.floor(len(self.dataset_map) / self.batch_size))
 
     def __getitem__(self, index):
-        dims = (
-            self.radius * 2 + 1,
-            self.radius * 2 + 1,
-            self.radius * 2 + 1,
-            len(self.data_encoder.categories_[0]),
-        )
-        X = np.empty((self.batch_size, *dims), dtype=np.uint8)
-        y = np.empty(self.batch_size, dtype="|S3")
-        data_point_batch = self.data_points[
-            index * self.batch_size : (index + 1) * self.batch_size
-        ]
-        data = []
-        labels = []
-        with h5py.File(str(self.data_set_path), "r") as dataset:
-            for i, (pdb, indices, label, _) in enumerate(data_point_batch):
-                data = np.pad(dataset[pdb]["data"], self.radius, mode="constant")
-                shape = data.shape
-                indices = [
-                    indices[0] + self.radius,
-                    indices[1] + self.radius,
-                    indices[2] + self.radius,
-                ]
-                region = data[
-                    indices[0] - self.radius : indices[0] + self.radius + 1,
-                    indices[1] - self.radius : indices[1] + self.radius + 1,
-                    indices[2] - self.radius : indices[2] + self.radius + 1,
-                ]
-                shape = region.shape
-                X[i,] = self.data_encoder.transform(
-                    region.flatten().reshape(-1, 1)
-                ).reshape(*shape, -1)
-                y[i,] = label
-        encoded_y = self.label_encoder.transform(y.reshape(-1, 1))
-        return X, encoded_y
+        # Open hdf5:
+        with h5py.File(str(self.dataset_path), "r") as dataset:
+            dims = dataset.attrs["frame_dims"]
+            X = np.empty((self.batch_size, *dims), dtype=bool)
+            y = np.empty((self.batch_size, 20), dtype=bool)
+            data_point_batch = self.dataset_map[
+                index * self.batch_size : (index + 1) * self.batch_size
+            ]
+
+            for i, (pdb_code, chain_id, residue_id, _) in enumerate(data_point_batch):
+                # Extract frame:
+                residue_frame = np.asarray(dataset[pdb_code][chain_id][residue_id][()])
+                X[i] = residue_frame
+                # Extract residue label:
+                y[i] = dataset[pdb_code][chain_id][residue_id].attrs["encoded_residue"]
+        return X, y
 
     def on_epoch_end(self):
         if self.shuffle:
-            random.shuffle(self.data_points)
+            random.shuffle(self.dataset_map)
 
 
 class ContigDiscretizedProteinsSequence(keras.utils.Sequence):
@@ -402,106 +365,3 @@ def annotate_data_with_frame_prediction(data_points, radius, data_set_path, mode
             converted_data_points.append((pdb, predictions, encoded_label))
 
     return converted_data_points
-
-
-def make_data_points(
-    data_set_path,
-    pdb_codes,
-    radius,
-    uncommon_res_conversion=UNCOMMON_RES_CONVERSION,
-    shuffle=True,
-):
-    """
-    Creates frames of structures with specified radius and centers the Ca in the middle of the frame.
-
-    Parameters
-    ----------
-    data_set_path : Path
-        Path to h5 dataset of structures
-    pdb_codes : List of str
-        List of PDB codes to be framed.
-    radius : int
-          Length of the edge of the frame unit
-
-                   +--------+
-                  /        /|
-                 /        / |
-                +--------+  |
-                |        |  |
-                |        |  +
-                |        | /
-                |        |/
-                +--------+
-                <-radius->
-          (this isn't actually a radius, but it gives the idea)
-    uncommon_res_conversion : Bool
-        Bool of whether the program will attempt to convert the uncommon
-        residues to a common one.
-    shuffle: bool
-        Shuffling of the order of data_points
-
-    Returns
-    -------
-    data_points : array of tuples
-        [(PDB Code, [Ca coordinates], residue identity of Ca, atom encoder)]
-        eg.
-        [
-        '5c7h.pdb1',
-        (55, 61, 41),
-        'LYS',
-        array([0, 6, 7, 8])
-        ...]
-
-    """
-    data_points = []
-    standard_aas = standard_amino_acids.values()
-    with h5py.File(data_set_path, "r") as data_set:
-        for pdb in pdb_codes:
-
-            group = data_set[pdb]
-
-            #  group['indices'] store the coords of Ca atoms
-            assert len(group["indices"]) == len(
-                group["labels"]
-            ), "Should have same number of indices and labels"
-
-            #  Add padding
-            data = np.pad(data_set[pdb]["data"], radius, mode="constant")
-            for i, l in zip(group["indices"], group["labels"]):
-                # Decode from bytes to unicode
-                decoded_l = l.decode()
-
-                # Check if center aa is standard:
-                if decoded_l not in standard_aas and uncommon_res_conversion:
-                    if decoded_l in UNCOMMON_RESIDUE_DICT.keys():
-                        print(
-                            f"ATTENTION: We are converting {decoded_l} to "
-                            f"{UNCOMMON_RESIDUE_DICT[decoded_l]}. "
-                        )
-                        decoded_l = UNCOMMON_RESIDUE_DICT[decoded_l]
-                    else:
-                        assert decoded_l in standard_aas, (
-                            f"Expected standard residue values, attempted "
-                            f"conversion, but got {decoded_l}."
-                        )
-                elif not uncommon_res_conversion:
-                    assert decoded_l in standard_aas, (
-                        f"Expected standard residue values, but got "
-                        f"{decoded_l}, uncommon residue conversion is off."
-                    )
-
-                # Centers the Ca carbon to create frame with Ca at center
-                padded_indices = (i[0] + radius, i[1] + radius, i[2] + radius)
-                region_data = data[
-                    padded_indices[0] - radius : padded_indices[0] + radius + 1,
-                    padded_indices[1] - radius : padded_indices[1] + radius + 1,
-                    padded_indices[2] - radius : padded_indices[2] + radius + 1,
-                ]
-                #  i is the coordinates of Ca (immutable as tuple)
-                #  Unique classes in voxels
-                data_points.append((pdb, tuple(i), decoded_l, np.unique(region_data)))
-
-        if shuffle:
-            random.shuffle(data_points)
-
-    return data_points
