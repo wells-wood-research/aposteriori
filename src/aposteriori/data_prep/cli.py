@@ -136,10 +136,12 @@ def cli(
 
     Basic Usage:
 
-    `make-frame-dataset -o /tmp/ -n test_dataset 1ubq.pdb 1ctf.pdb`
+    `make-frame-dataset $path_to_folder_with_pdb/`
 
-    This command will make a tiny dataset found at `/tmp/test_dataset.hdf5`,
-    containing all residues 1ubq.pdb and 1ctf.pdb
+    eg. `make-frame-dataset tests/testing_files/pdb_files/`
+
+    This command will make a tiny dataset in the current directory `test_dataset.hdf5`,
+    containing all residues of the structures in the folder.
 
     Globs can be used to define the structure files to be processed.
     `make-frame-dataset pdb_files/**/*.pdb` would include all `.pdb` files in all
@@ -153,14 +155,18 @@ def cli(
     The hdf5 object itself is like a Python dict. The structure is
     simple:
 
-    hdf5 Contains a number of groups, one for each structure file.
     └─[pdb_code] Contains a number of subgroups, one for each chain.
       └─[chain_id] Contains a number of subgroups, one for each residue.
         └─[residue_id] voxels_per_side^3 array of ints, representing element number.
           └─.attrs['label'] Three-letter code for the residue.
           └─.attrs['encoded_residue'] One-hot encoding of the residue.
-
-
+    └─.attrs['make_frame_dataset_ver']: str - Version used to produce the dataset.
+    └─.attrs['frame_dims']: t.Tuple[int, int, int, int] - Dimentsions of the frame.
+    └─.attrs['atom_encoder']: t.List[str] - Lables used for the encoding (eg, ["C", "N", "O"]).
+    └─.attrs['encode_cb']: bool - Whether a Cb atom was added at the avg position of (-0.741287356, -0.53937931, -1.224287356).
+    └─.attrs['atom_filter_fn']: str - Function used to filter the atoms in the frame.
+    └─.attrs['residue_encoder']: t.List[str] - Ordered list of residues corresponding to the encoding used.
+    └─.attrs['frame_edge_length']: float - Length of the frame in Angstroms (A)
 
     So hdf5['1ctf']['A']['58'] would be an array for the voxelized.
     """
@@ -202,6 +208,7 @@ def cli(
     )
     return
 # }}}
+
 
 if __name__ == "__main__":
     # The cli will be run if this file is invoked directly
