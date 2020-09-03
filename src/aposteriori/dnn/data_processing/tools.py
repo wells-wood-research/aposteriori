@@ -52,18 +52,16 @@ def extract_metadata_from_dataset(frame_dataset: Path) -> DatasetMetadata:
         dataset_metadata = DatasetMetadata.import_metadata_dict(meta_dict)
 
     # Extract version metadata:
-    dataset_ver_num = dataset_metadata.make_frame_dataset_ver.strip(".")[0]
-    aposteriori_ver_num = MAKE_FRAME_DATASET_VER.strip(".")[0]
-    # If the versions are compatible, return metadata
-    if dataset_ver_num == aposteriori_ver_num:
-        return dataset_metadata
-    else:
+    dataset_ver_num = dataset_metadata.make_frame_dataset_ver.split(".")[0]
+    aposteriori_ver_num = MAKE_FRAME_DATASET_VER.split(".")[0]
+    # If the versions are compatible, return metadata else stop:
+    if dataset_ver_num != aposteriori_ver_num:
         sys.exit(
             f"Dataset version is {dataset_metadata.make_frame_dataset_ver} and is incompatible "
             f"with Aposteriori version {MAKE_FRAME_DATASET_VER}."
             f"Try re-creating the dataset with the current version of Aposteriori."
         )
-
+    return dataset_metadata
 
 def create_flat_dataset_map(frame_dataset: Path) -> t.List[t.Tuple[str, int, str, str]]:
     """

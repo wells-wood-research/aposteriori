@@ -11,19 +11,21 @@ from scipy.stats import entropy
 
 from aposteriori.dnn.config import (
     ANNOTATED_ENTROPY_PDB_PATH,
-    # FRAME_EDGE_LENGTH,
     PDB_PATH,
     PDB_CODES,
     FRAME_CONV_MODEL,
     PDB_REQUEST_URL,
     SAVE_ANNOTATED_PDB_TO_FILE,
-    # VOXELS_PER_SIDE,
 )
 from aposteriori.dnn.network.analysis.callbacks import top_3_cat_acc
 from aposteriori.dnn.data_processing.discretization import (
     FrameDiscretizedProteinsSequence,
 )
-from aposteriori.data_prep.create_frame_data_set import make_frame_dataset, Codec, DatasetMetadata
+from aposteriori.data_prep.create_frame_data_set import (
+    make_frame_dataset,
+    Codec,
+    DatasetMetadata,
+)
 from aposteriori.dnn.data_processing.tools import create_flat_dataset_map
 
 
@@ -50,7 +52,9 @@ def _annotate_ampalobj_with_entropy(
     """
     # Deals with structures from NMR as ampal returns Container of Assemblies
     if isinstance(ampal_structure, ampal.AmpalContainer):
-        warnings.warn(f"Selecting the first state from the NMR structure {ampal_structure.id}")
+        warnings.warn(
+            f"Selecting the first state from the NMR structure {ampal_structure.id}"
+        )
         ampal_structure = ampal_structure[0]
 
     # Reset B-factor:
@@ -109,7 +113,8 @@ def _fetch_pdb(
 
     output_path = output_folder / pdb_code_with_extension
     urllib.request.urlretrieve(
-        pdb_request_url + pdb_code_with_extension, filename=output_path,
+        pdb_request_url + pdb_code_with_extension,
+        filename=output_path,
     )
 
     return output_path

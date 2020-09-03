@@ -79,7 +79,9 @@ if __name__ == "__main__":
 
     # Architecture Plots:
     try:
-        _ = plot_model(model, str(OUTPUT_DIR / "model_architecture.svg"), show_shapes=True)
+        _ = plot_model(
+            model, str(OUTPUT_DIR / "model_architecture.svg"), show_shapes=True
+        )
     except ValueError:
         pass
 
