@@ -1,8 +1,13 @@
-# aposteriori
 
-DNN based protein design.
+<div align="center">
+  <img src="logo.png"><br>
+  <h3>Protein Structures Voxelisation for Deep Learning</h3><br>
+</div>
 
 ![CI](https://github.com/wells-wood-research/aposteriori/workflows/CI/badge.svg)
+
+[aposteriori](https://github.com/wells-wood-research/aposteriori) is a library for the voxelization of protein structures for protein design. It uses conventional PDB files to create fixed discretized areas of space called "frames". The atoms belonging to the side-chain of the residues are removed so to allow a Deep Learning classifier to determine the identity of the frames based solely on the protein backbone structure. 
+
 
 ## Installation
 
@@ -20,6 +25,11 @@ There are two ways to create a dataset using `aposteriori`: through the Python A
 `aposteriori.make_frame_dataset` or using the command line tool `make-frame-dataset` that
 installs along side the module:
 
+```sh
+make-frame-dataset $PATH_TO_PDB_FOLDER
+```
+
+If you want to try out an example, run: 
 ```sh
 make-frame-dataset tests/testing_files/pdb_files/
 ```
@@ -138,9 +148,7 @@ cd aposteriori/
 poetry install
 ```
 
-In case you get an error about Python Versions (eg. if your python version
- is >3.7), we recommend you use PyEnv for this [PyEnv](https://github.com/pyenv
- /pyenv). 
+In case you get an error about Python Versions (eg. if your python version is >3.7), we recommend you use [PyEnv](https://github.com/pyenv/pyenv) to install a separate version of Python alonside your main one. Then run:  
 
 ```sh
 pyenv install 3.7.0
@@ -152,6 +160,12 @@ If you are still having problems switching versions, (eg. you run the previous
 
 ```sh
 eval "$(pyenv init -)"
+```
+
+if Poetry doesn't pick up on the correct version of Python from PyEnv, run
+
+```sh
+poetry env use python3.7
 ```
 
 You can then use either `poetry shell` to activate the development environment or use
@@ -167,8 +181,3 @@ Make sure you test your install:
 poetry run pytest tests/
 ```
 
-if Poetry doesn't pick up on the correct version of Python from PyEnv, run
-
-```sh
-poetry env use python3.7
-```
