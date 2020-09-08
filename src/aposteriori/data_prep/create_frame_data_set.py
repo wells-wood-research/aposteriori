@@ -261,7 +261,7 @@ def encode_residue(residue: str) -> np.ndarray:
         if residue in UNCOMMON_RESIDUE_DICT.keys():
             warnings.warn(f"{residue} is not a standard residue.")
             residue_label = UNCOMMON_RESIDUE_DICT[residue]
-            warnings.warn(f"Residue converted to {residue}.")
+            warnings.warn(f"Residue converted to {residue_label}.")
         else:
             assert (
                 residue in UNCOMMON_RESIDUE_DICT.keys()

@@ -4,11 +4,9 @@ from datetime import datetime
 
 
 import matplotlib.pyplot as plt
-import tensorflow as tf
-import tensorflow.keras.backend
-from ampal.data import ELEMENT_DATA
-from tensorflow.python.client import device_lib
+import tensorflow
 from tensorflow.keras.optimizers import Adam
+from ampal.data import ELEMENT_DATA
 
 # Config paths
 MAKE_FRAME_DATASET_VER = "0.1.0"
@@ -87,14 +85,11 @@ REBUILD_H5_DATASET = True
 FETCH_PDB = True
 
 # Hardware:
-config = tf.ConfigProto()
-# Allow GPU
-config.gpu_options.allow_growth = True
-session = tf.Session(config=config)
-tensorflow.keras.backend.set_session(session)
 # Check GPU
-devices = device_lib.list_local_devices()
-[print(d.name) for d in devices]
+gpus = tensorflow.config.experimental.list_physical_devices('GPU')
+[print(d.name) for d in gpus]
+if gpus:
+    tensorflow.config.experimental.set_virtual_device_configuration(gpus, True)
 
 # General Biology Settings:
 RESIDUES_THREE_TO_ONE_LETTER = {

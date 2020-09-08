@@ -15,7 +15,6 @@ from aposteriori.dnn.config import (
     OUTPUT_DIR,
     NAME_MODEL,
     TENSORBOARD_OUTPUT_DIR,
-    BATCH_SIZE,
     WRITE_GRADS,
     HISTOGRAM_FREQ,
     UPDATE_FREQ,
@@ -120,14 +119,12 @@ def create_tb_callback(
     log_dir=TENSORBOARD_OUTPUT_DIR,
     histogram_freq=HISTOGRAM_FREQ,
     write_grads=WRITE_GRADS,
-    batch_size=BATCH_SIZE,
     update_freq=UPDATE_FREQ,
 ):
     tb_callback = keras.callbacks.TensorBoard(
         log_dir=str(log_dir),
         histogram_freq=histogram_freq,
         write_grads=write_grads,
-        batch_size=batch_size,
         update_freq=update_freq,
     )
 

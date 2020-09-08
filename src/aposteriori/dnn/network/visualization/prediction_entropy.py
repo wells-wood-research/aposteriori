@@ -171,11 +171,11 @@ def visualize_model_entropy(
     pdb_paths = [_fetch_pdb(pdb_code) for pdb_code in pdb_codes]
 
     # Set up codec:
-    if dataset_metadata.atom_encoder == list("CNO"):
+    if dataset_metadata.atom_encoder == ["C", "N", "O"]:
         codec = Codec.CNO()
-    elif dataset_metadata.atom_encoder == list("CNOCB"):
+    elif dataset_metadata.atom_encoder == ["C", "N", "O", "CB"]:
         codec = Codec.CNOCB()
-    elif dataset_metadata.atom_encoder == list("CNOCBCA"):
+    elif dataset_metadata.atom_encoder == ["C", "N", "O", "CB", "CA"]:
         codec = Codec.CNOCBCA()
 
     annotated_pdbs = []
@@ -202,7 +202,7 @@ def visualize_model_entropy(
         tf.keras.utils.get_custom_objects()["top_3_cat_acc"] = top_3_cat_acc
         frame_model = tf.keras.models.load_model(model_path)
         # Make predictions on loaded data:
-        final_prediction = frame_model.predict_generator(discretized_dataset)
+        final_prediction = frame_model.predict(discretized_dataset)
         # Calculate Shannon entropy of predictions:
         entropy_arr = calculate_prediction_entropy(final_prediction)
         # Plot error for each of the PDB codes:
