@@ -128,11 +128,11 @@ def visualize_model_entropy(
     """
     pdb_paths = [_fetch_pdb(pdb_code) for pdb_code in pdb_codes]
     # Set up codec:
-    if all(dataset_metadata.atom_encoder == ["C", "N", "O"]):
+    if set(dataset_metadata.atom_encoder) == {"C", "N", "O"}:
         codec = Codec.CNO()
-    elif all(dataset_metadata.atom_encoder == ["C", "N", "O", "CB"]):
+    elif set(dataset_metadata.atom_encoder) == {"C", "N", "O", "CB"}:
         codec = Codec.CNOCB()
-    elif all(dataset_metadata.atom_encoder == ["C", "N", "O", "CB", "CA"]):
+    elif set(dataset_metadata.atom_encoder) == {"C", "N", "O", "CB", "CA"}:
         codec = Codec.CNOCBCA()
 
     annotated_pdbs = []

@@ -220,3 +220,12 @@ def test_cb_atom_filter(residue_number: int):
         filtered_atom = True if atom.res_label in backbone_atoms else False
         filtered_scenario = cfds.keep_sidechain_cb_atom_filter(atom)
         assert filtered_atom == filtered_scenario, f"Expected {atom.res_label} to return {filtered_atom} after filter"
+
+
+def test_download_pdb_from_csv_file():
+    csv_test_file = Path("tests/testing_files/csv_pdb_list/pdb_to_test.csv")
+    test_file_paths = cfds.download_pdb_from_csv_file(csv_test_file, TEST_DATA_DIR)
+    assert TEST_DATA_DIR / "1qys.pdb1" in test_file_paths, f"Expected to find {TEST_DATA_DIR / '1qys.pdb1'} as part of the generated paths."
+    assert TEST_DATA_DIR / "6ct4.pdb1" in test_file_paths, f"Expected to find {TEST_DATA_DIR / '6ct4.pdb1'} as part of the generated paths."
+    assert (TEST_DATA_DIR / "1qys.pdb1").exists(), f"Expected download of 1QYS to return PDB file"
+    assert (TEST_DATA_DIR / "6ct4.pdb1").exists(), f"Expected download of 6CT4 to return PDB file"
