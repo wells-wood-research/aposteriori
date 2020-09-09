@@ -240,8 +240,8 @@ def visualize_model_layer(
     )
 
     # Calculate predictions:
-    activation_prediction = activation_model.predict_generator(frame_set)
-    final_prediction = frame_model.predict_generator(frame_set)
+    activation_prediction = activation_model.predict(frame_set)
+    final_prediction = frame_model.predict(frame_set)
 
     # Visualize index if integer
     if isinstance(frame_index, int):

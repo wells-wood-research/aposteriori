@@ -95,8 +95,8 @@ if __name__ == "__main__":
     tb_callback = create_tb_callback()
 
     # Fit Model
-    _ = model.fit_generator(
-        generator=TRAINING_SET,
+    _ = model.fit(
+        x=TRAINING_SET,
         validation_data=VALIDATION_SET,
         epochs=EPOCHS,
         use_multiprocessing=MULTIPROCESSING,
