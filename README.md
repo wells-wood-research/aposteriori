@@ -1,4 +1,3 @@
-
 <div align="center">
   <img src="logo.png"><br>
   <h3>Protein Structures Voxelisation for Deep Learning</h3><br>
@@ -19,14 +18,14 @@ _Coming soon..._
 pip install aposteriori
 ```
 
-## Creating a Data Set
+## Creating a Dataset
 
 There are two ways to create a dataset using `aposteriori`: through the Python API in
 `aposteriori.make_frame_dataset` or using the command line tool `make-frame-dataset` that
 installs along side the module:
 
 ```sh
-make-frame-dataset $PATH_TO_PDB_FOLDER
+make-frame-dataset /path/to/folder
 ```
 
 If you want to try out an example, run: 
@@ -136,6 +135,46 @@ Options:
   --help                          Show this message and exit.
 
 ```
+
+### Example 1: Create a Dataset Using Biological Units of Proteins
+
+Ideally, if you are trying to solve the Inverse Protein Folding Problem
+, you should use Biological Units as they are the minimal functional part of
+ a protein. This prevents having solvent-exposed hydrophobic residues as
+  training data. 
+  
+To download the dataset and read more visit: https://pdbj.org/help/about-aubu
+
+Once the dataset is downloaded, you will have a directory with sub-directory
+ containig the gzipped PDB structures (ie. your Protein Data Bank Files). 
+ 
+To voxelize the structures into frames, run:
+
+```sh
+make-frame-dataset -vrz /path/to/biounits/  -e .pdb1.gz 
+```
+  
+If everything went well, you should be seeing the number of structures that
+ will be voxelised and a list of default parameters, to which you will press "y
+ " to proceed. 
+ 
+
+### Example 2: Create a Dataset Using Biological Units of Proteins and PISCES
+
+PISCES (Protein Sequence Culling Server) is a curated subset of protein
+ structures. Each file contains a list of structures with parameters such as
+  resolution, percentage identity and R-Values. 
+  
+Aposteriori supports filtering with a PISCES file as such:
+ 
+```sh
+make-frame-dataset -vrz /path/to/biounits/  -e .pdb1.gz --pieces-filter-file
+ path/to/pisces/cullpdb_pc90_res1.6_R0.25_d190114_chains8082
+```
+  
+If everything went well, you should be seeing the number of structures that
+ will be voxelised and a list of default parameters, to which you will press "y
+ " to proceed. 
 
 ## Development
 

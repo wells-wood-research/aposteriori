@@ -528,7 +528,7 @@ def process_single_path(
         try:
             if chain_filter_dict:
                 chain_filter_list = chain_filter_dict[
-                    structure_path.name.split(".")[0].upper()
+                    structure_path.name.split(".")[0].upper().strip("PDB")
                 ]
             else:
                 chain_filter_list = None
@@ -827,7 +827,7 @@ def make_frame_dataset(
         structure_file_paths = [
             p
             for p in structure_file_paths
-            if p.name.split(".")[0].upper() in chain_filter_dict
+            if p.name.split(".")[0].upper().strip("PDB") in chain_filter_dict
         ]
         print(
             f"{original_path_num - len(structure_file_paths)} structure file/s were "
