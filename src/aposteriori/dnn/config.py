@@ -58,7 +58,7 @@ VISUALIZE_ACTIVATION_AFTER_TRAINING = True
 ATOM_COLORS = {
     # Atomic number : Color
     0: ELEMENT_DATA['C']['CPK'],  # Carbon
-    1: ELEMENT_DATA['N']['CPK'],
+    1: ELEMENT_DATA['N']['CPK'],  # Nitrogen
     2: ELEMENT_DATA['O']['CPK'],  # Oxygen
     3: "orange",  # +1
     4: "green"  # +2
