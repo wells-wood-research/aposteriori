@@ -1,4 +1,3 @@
-import urllib
 import typing as t
 import warnings
 from pathlib import Path
@@ -9,12 +8,11 @@ import tensorflow as tf
 from ampal.protein import Polypeptide
 from scipy.stats import entropy
 
+from aposteriori.data_prep.create_frame_data_set import _fetch_pdb
 from aposteriori.dnn.config import (
     ANNOTATED_ENTROPY_PDB_PATH,
-    PDB_PATH,
     PDB_CODES,
     FRAME_CONV_MODEL,
-    PDB_REQUEST_URL,
     SAVE_ANNOTATED_PDB_TO_FILE,
 )
 from aposteriori.dnn.network.analysis.callbacks import top_3_cat_acc
@@ -80,46 +78,6 @@ def _annotate_ampalobj_with_entropy(
     return ampal_structure
 
 
-def _fetch_pdb(
-    pdb_code: str,
-    output_folder: Path = PDB_PATH,
-    pdb_request_url: str = PDB_REQUEST_URL,
-    download_assembly: bool = False,
-) -> Path:
-    """
-    Downloads a specific pdb file into a specific folder.
-
-    Parameters
-    ----------
-    pdb_code : str
-        Code of the PDB file to be downloaded.
-    output_folder : Path
-        Output path to save the PDB file.
-    pdb_request_url : str
-        Base URL to download the PDB files.
-    download_assembly: bool
-        Whether to download the assembly file of the pdb.
-
-    Returns
-    -------
-    output_path: Path
-        Path to downloaded pdb
-
-    """
-    if download_assembly:
-        pdb_code_with_extension = f"{pdb_code}.pdb1"
-    else:
-        pdb_code_with_extension = f"{pdb_code}.pdb"
-
-    output_path = output_folder / pdb_code_with_extension
-    urllib.request.urlretrieve(
-        pdb_request_url + pdb_code_with_extension,
-        filename=output_path,
-    )
-
-    return output_path
-
-
 def calculate_prediction_entropy(residue_predictions: list) -> list:
     """
     Calculates Shannon Entropy on predictions.
@@ -169,13 +127,12 @@ def visualize_model_entropy(
         Lists of annotated ampal assemblies.
     """
     pdb_paths = [_fetch_pdb(pdb_code) for pdb_code in pdb_codes]
-
     # Set up codec:
-    if dataset_metadata.atom_encoder == ["C", "N", "O"]:
+    if all(dataset_metadata.atom_encoder == ["C", "N", "O"]):
         codec = Codec.CNO()
-    elif dataset_metadata.atom_encoder == ["C", "N", "O", "CB"]:
+    elif all(dataset_metadata.atom_encoder == ["C", "N", "O", "CB"]):
         codec = Codec.CNOCB()
-    elif dataset_metadata.atom_encoder == ["C", "N", "O", "CB", "CA"]:
+    elif all(dataset_metadata.atom_encoder == ["C", "N", "O", "CB", "CA"]):
         codec = Codec.CNOCBCA()
 
     annotated_pdbs = []

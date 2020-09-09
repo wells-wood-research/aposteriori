@@ -2,14 +2,22 @@ import click
 import pathlib
 import sys
 import typing as t
+import warnings
 
-from aposteriori.data_prep.create_frame_data_set import Codec, make_frame_dataset, StrOrPath, default_atom_filter
+from aposteriori.data_prep.create_frame_data_set import (
+    Codec,
+    make_frame_dataset,
+    StrOrPath,
+    default_atom_filter,
+    download_pdb_from_csv_file,
+)
 
 
 # {{{ CLI
 @click.command()
 @click.argument(
-    "structure_file_folder", type=click.Path(exists=True, readable=True),
+    "structure_file_folder",
+    type=str,
 )
 @click.option(
     "-o",
@@ -111,6 +119,14 @@ from aposteriori.data_prep.create_frame_data_set import Codec, make_frame_datase
         "Encodes atoms in different channels, depending on atom types. Default is CNO, other options are ´CNOCB´ and `CNOCBCA` to encode the Cb or Cb and Ca in different channels respectively."
     ),
 )
+@click.option(
+    "-d",
+    "--download_file",
+    type=click.Path(exists=True, readable=True),
+    help=(
+        "Path to csv file with PDB codes to be voxelised. The biological assembly will be used for download. PDB codes will be downloaded the /pdb/ folder."
+    ),
+)
 def cli(
     structure_file_folder: str,
     output_folder: str,
@@ -125,6 +141,7 @@ def cli(
     verbose: int,
     encode_cb: bool,
     atom_encoder: str,
+    download_file: str,
 ):
     """Creates a dataset of voxelized amino acid frames.
 
@@ -170,19 +187,33 @@ def cli(
 
     So hdf5['1ctf']['A']['58'] would be an array for the voxelized.
     """
-    structure_folder_path = pathlib.Path(structure_file_folder)
-    structure_files: t.List[StrOrPath] = list(
-        structure_folder_path.glob(f"**/*{extension}")
-        if recursive
-        else structure_folder_path.glob(f"*{extension}")
-    )
-    if not structure_files:
-        print(
-            f"No structure_files found in `{structure_folder_path}`. Did you mean to "
-            f"use the recursive flag?"
+    # If a download file is specified, open and download
+    if pathlib.Path(download_file).exists():
+        structure_files: t.List[StrOrPath] = download_pdb_from_csv_file(
+            pathlib.Path(download_file)
         )
-        sys.exit()
+    else:
+        # Extract all the PDBs in folder:
+        if pathlib.Path(structure_file_folder).exists():
+            structure_folder_path = pathlib.Path(structure_file_folder)
+            structure_files: t.List[StrOrPath] = list(
+                structure_folder_path.glob(f"**/*{extension}")
+                if recursive
+                else structure_folder_path.glob(f"*{extension}")
+            )
+            if not structure_files:
+                print(
+                    f"No structure_files found in `{structure_folder_path}`. Did you mean to "
+                    f"use the recursive flag?"
+                )
+                sys.exit()
+        else:
+            warnings.warn(
+                f"{structure_file_folder} file not found. Did you specify the -d argument for the download file? If so, check your spelling."
+            )
+            sys.exit()
 
+    # Create Codec:
     if atom_encoder == "CNO":
         codec = Codec.CNO()
     elif atom_encoder == "CNOCB":
@@ -190,7 +221,11 @@ def cli(
     elif atom_encoder == "CNOCBCA":
         codec = Codec.CNOCBCA()
     else:
-        assert atom_encoder in ["CNO", "CNOCB", "CNOCBCA"], f"Expected encoder to be CNO, CNOCB, CNOCBCA but got {atom_encoder}"
+        assert atom_encoder in [
+            "CNO",
+            "CNOCB",
+            "CNOCBCA",
+        ], f"Expected encoder to be CNO, CNOCB, CNOCBCA but got {atom_encoder}"
 
     make_frame_dataset(
         structure_files=structure_files,
@@ -207,6 +242,8 @@ def cli(
         encode_cb=encode_cb,
     )
     return
+
+
 # }}}
 
 
