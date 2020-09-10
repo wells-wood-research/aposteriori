@@ -53,22 +53,26 @@ if __name__ == "__main__":
     if BALANCE_RESIDUES:
         flat_dataset_map = balance_dataset(flat_dataset_map)
         logger.info(f"Balanced to {len(flat_dataset_map)} frames.\n")
-
     # Splitting the dataset
     training_data, validation_data = train_test_split(
         flat_dataset_map, test_size=0.20, random_state=42
+    )
+    logger.info(
+        f"Training Set: {len(training_data)}, Validation Set: {len(validation_data)}"
     )
     # Discretize Structures:
     TRAINING_SET = FrameDiscretizedProteinsSequence(
         dataset_map=training_data,
         dataset_path=HDF5_STRUCTURES_PATH,
+        batch_size=BATCH_SIZE,
     )
     VALIDATION_SET = FrameDiscretizedProteinsSequence(
-        dataset_map=training_data,
+        dataset_map=validation_data,
         dataset_path=HDF5_STRUCTURES_PATH,
+        batch_size=BATCH_SIZE,
     )
     logger.info(
-        f"Training Set: {len(TRAINING_SET)}, Validation Set: {len(VALIDATION_SET)}"
+        f"Batched Training Set: {len(TRAINING_SET)}, Batched Validation Set: {len(VALIDATION_SET)}"
     )
 
     # Define Model:

@@ -3,8 +3,7 @@
 In this type of dataset, all individual entries are stored separately in a flat
 structure.
 """
-
-from dataclasses import dataclass
+import csv
 import glob
 import gzip
 import multiprocessing as mp
@@ -12,7 +11,9 @@ import pathlib
 import sys
 import time
 import typing as t
+import urllib
 import warnings
+from dataclasses import dataclass
 
 import ampal
 import ampal.geometry as geometry
@@ -20,7 +21,12 @@ import h5py
 import numpy as np
 
 from ampal.amino_acids import standard_amino_acids
-from aposteriori.dnn.config import UNCOMMON_RESIDUE_DICT, MAKE_FRAME_DATASET_VER
+from aposteriori.dnn.config import (
+    UNCOMMON_RESIDUE_DICT,
+    MAKE_FRAME_DATASET_VER,
+    PDB_PATH,
+    PDB_REQUEST_URL,
+)
 
 
 # {{{ Types
@@ -746,6 +752,84 @@ def process_paths(
     return
 
 
+def _fetch_pdb(
+    pdb_code: str,
+    output_folder: pathlib.Path = PDB_PATH,
+    pdb_request_url: str = PDB_REQUEST_URL,
+    download_assembly: bool = True,
+) -> pathlib.Path:
+    """
+    Downloads a specific pdb file into a specific folder.
+
+    Parameters
+    ----------
+    pdb_code : str
+        Code of the PDB file to be downloaded.
+    output_folder : Path
+        Output path to save the PDB file.
+    pdb_request_url : str
+        Base URL to download the PDB files.
+    download_assembly: bool
+        Whether to download the biological assembly file of the pdb.
+
+    Returns
+    -------
+    output_path: Path
+        Path to downloaded pdb
+
+    """
+    if download_assembly:
+        pdb_code_with_extension = f"{pdb_code}.pdb1"
+    else:
+        pdb_code_with_extension = f"{pdb_code}.pdb"
+
+    output_path = output_folder / pdb_code_with_extension
+    urllib.request.urlretrieve(
+        pdb_request_url + pdb_code_with_extension,
+        filename=output_path,
+    )
+
+    return output_path
+
+
+def download_pdb_from_csv_file(
+    pdb_csv_file: pathlib.Path, pdb_outpath: pathlib.Path = PDB_PATH
+):
+    """
+    Dowloads PDB functional unit files of structures from a csv file.
+
+    Parameters
+    ----------
+    pdb_csv_file: pathlib.Path
+        Path to the csv file with PDB codes.
+
+    pdb_outpath: pathlib.Path
+        Path output where PDBs will be saved to.
+
+    Returns
+    -------
+    structure_file_paths: t.List[StrOrPath]
+        List of strings / paths to the newly downloaded PDBs structures
+
+    """
+    with open(pdb_csv_file) as csv_file:
+        protein_csv = csv.reader(csv_file, delimiter=",")
+        pdb_list = next(protein_csv)
+    # Check if pdb folder exists
+    if pathlib.Path(pdb_outpath).exists():
+        warnings.warn(
+            f"{pdb_outpath} folder already exists. PDB files will be added next to already existing ones."
+        )
+    else:
+        pathlib.Path(pdb_outpath).mkdir(parents=True, exist_ok=True)
+
+    structure_file_paths = [
+        _fetch_pdb(pdb_code[:4], download_assembly=True, output_folder=pdb_outpath) for pdb_code in pdb_list
+    ]
+
+    return structure_file_paths
+
+
 def make_frame_dataset(
     structure_files: t.List[StrOrPath],
     output_folder: StrOrPath,
@@ -866,4 +950,6 @@ def make_frame_dataset(
         codec=codec,
     )
     return output_file_path
+
+
 # }}}
