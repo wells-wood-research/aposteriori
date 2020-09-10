@@ -106,7 +106,7 @@ from aposteriori.data_prep.create_frame_data_set import (
     type=bool,
     default=True,
     help=(
-        "Encode the Cb at an average position (-0.741287356, -0.53937931, -1.224287356) in the aligned frame, even for Glycine residues."
+        "Encode the Cb at an average position (-0.741287356, -0.53937931, -1.224287356) in the aligned frame, even for Glycine residues. Default = True"
     ),
 )
 @click.option(

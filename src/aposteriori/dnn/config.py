@@ -55,6 +55,8 @@ BALANCE_RESIDUES = True
 
 # Activation Layer Visualization:
 VISUALIZE_ACTIVATION_AFTER_TRAINING = True
+SAVE_ACTIVATION_PLOTS_TO_IMAGE = True
+SAVE_ACTIVATION_PLOTS_TO_PICKLE = True
 ATOM_COLORS = {
     # Atomic number : Color
     0: ELEMENT_DATA['C']['CPK'],  # Carbon
@@ -63,7 +65,7 @@ ATOM_COLORS = {
     3: "orange",  # +1
     4: "green"  # +2
 }
-FIG_SIZE = (10, 5)
+FIG_SIZE = (15, 5)
 COLOR_MAP = plt.cm.rainbow
 LOCAL_COLOR_MAP = False
 ACTIVATION_ALPHA = 0.05
@@ -81,7 +83,6 @@ if SAVE_ANNOTATED_PDB_TO_FILE:
 PDB_REQUEST_URL = "https://files.rcsb.org/download/"
 PDB_CODES = ["1qys", "6ct4"]
 HDF5_STRUCTURES_PATH = DATA_FOLDER / "frame_dataset.hdf5"
-REBUILD_H5_DATASET = True
 FETCH_PDB = True
 
 # Hardware:
