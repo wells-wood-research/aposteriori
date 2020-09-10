@@ -856,7 +856,7 @@ def download_pdb_from_csv_file(
         pathlib.Path(pdb_outpath).mkdir(parents=True, exist_ok=True)
 
     structure_file_paths = [
-        _fetch_pdb(pdb_code[:4], download_assembly=True, output_folder=pdb_outpath)
+        _fetch_pdb(pdb_code, download_assembly=True, output_folder=pdb_outpath)
         for pdb_code in pdb_list
     ]
 
