@@ -1,3 +1,4 @@
+import pickle
 import typing as t
 from pathlib import Path
 
@@ -17,6 +18,8 @@ from aposteriori.dnn.config import (
     FIG_SIZE,
     FRAME_CONV_MODEL,
     PLOT_DIR,
+    SAVE_ACTIVATION_PLOTS_TO_PICKLE,
+    SAVE_ACTIVATION_PLOTS_TO_IMAGE,
 )
 from aposteriori.dnn.data_processing.discretization import (
     FrameDiscretizedProteinsSequence,
@@ -92,6 +95,8 @@ def _visualize_frame(
     real_residue: str,
     frame_index: int,
     local_color_map: bool = False,
+    save_plot_img: bool = True,
+    save_plot_picke: bool = True,
 ):
     """
     Visualizes the frame and the activation layer.
@@ -143,68 +148,86 @@ def _visualize_frame(
                     z.append(iz)
                     w.append(a)
 
-        # Create figure
-        fig = plt.figure(figsize=FIG_SIZE)
-        ax = fig.add_subplot(121, projection="3d")
+        if save_plot_img:
 
-        # Label the real residue present in the position
-        if residue == real_residue:
-            is_correct_residue = " Target"
-        else:
-            is_correct_residue = ""
+            # Create figure
+            fig = plt.figure(figsize=FIG_SIZE)
+            ax = fig.add_subplot(121, projection="3d")
 
-        # Plot Settings:
-        ax.set_title(
-            residue
-            + " "
-            + str(round(calculated_residue_probability[i] * 100, 2))
-            + is_correct_residue,
-            fontsize=12,
-        )
-        ax.set_ylim([0, frame_array.shape[0]])
-        ax.set_xlim([0, frame_array.shape[0]])
-        ax.set_zlim([0, frame_array.shape[0]])
+            # Label the real residue present in the position
+            if residue == real_residue:
+                is_correct_residue = " Target"
+            else:
+                is_correct_residue = ""
 
-        # Add axes labels:
-        ax.set_xlabel("X axis")
-        ax.set_ylabel("Y axis")
-        ax.set_zlabel("Z axis", labelpad=15)
+            # Plot Settings:
+            ax.set_title(
+                residue
+                + " "
+                + str(round(calculated_residue_probability[i] * 100, 2))
+                + is_correct_residue,
+                fontsize=12,
+            )
+            ax.set_ylim([0, frame_array.shape[0]])
+            ax.set_xlim([0, frame_array.shape[0]])
+            ax.set_zlim([0, frame_array.shape[0]])
 
-        # Colorbar:
-        # Normalize activation colors to be min and max of the local activation
-        if local_color_map:
-            norm = colors.Normalize(vmin=min(w), vmax=max(w))
-        else:
-            norm = colors.Normalize(vmin=resized_array.min(), vmax=resized_array.min())
+            # Add axes labels:
+            ax.set_xlabel("X axis")
+            ax.set_ylabel("Y axis")
+            ax.set_zlabel("Z axis")
 
-        sm = plt.cm.ScalarMappable(cmap=COLOR_MAP, norm=norm)
-        fig.colorbar(sm).set_label("Attention Level")
+            # Colorbar:
+            # Normalize activation colors to be min and max of the local activation
+            if local_color_map:
+                norm = colors.Normalize(vmin=min(w), vmax=max(w))
+            else:
+                norm = colors.Normalize(vmin=resized_array.min(), vmax=resized_array.min())
 
-        # Plot Activation + Set color to intensity:
-        ax.scatter(
-            x,
-            y,
-            z,
-            zdir="z",
-            alpha=ACTIVATION_ALPHA,
-            color=COLOR_MAP(norm(w)),
-            depthshade=False,
-        )
+            sm = plt.cm.ScalarMappable(cmap=COLOR_MAP, norm=norm)
+            fig.colorbar(sm, pad=0.1).set_label("Attention Level")
 
-        # Plot Atoms:
-        for k in atom_coords.keys():
-            x, y, z = atom_coords[k]
+            # Plot Activation + Set color to intensity:
+            ax.scatter(
+                x,
+                y,
+                z,
+                zdir="z",
+                alpha=ACTIVATION_ALPHA,
+                color=COLOR_MAP(norm(w)),
+                depthshade=False,
+            )
 
-            ax.scatter(x, y, z, zdir="z", color=ATOM_COLORS[k], depthshade=False)
+            # Plot Atoms:
+            for k in atom_coords.keys():
+                x, y, z = atom_coords[k]
 
-        # Save
-        plt.savefig(
-            PLOT_DIR / (residue + f"_frame_{frame_index}" + ".png"),
-            bbox_inches="tight",
-            pad_inches=0.3,
-            quality=95,
-        )
-        plt.close(fig)
+                ax.scatter(x, y, z, zdir="z", color=ATOM_COLORS[k], depthshade=False)
+
+            plt.tight_layout()
+
+            # Save
+            plt.savefig(
+                PLOT_DIR / (residue + f"_frame_{frame_index}" + ".png"),
+                bbox_inches="tight",
+                pad_inches=0.3,
+                quality=95,
+            )
+            plt.close(fig)
+
+        if save_plot_picke:
+            path_to_pickle_plot = PLOT_DIR / (residue + f"_frame_{frame_index}" + ".pickle")
+
+            activation_points_dict = {
+                "x": x,
+                "y": y,
+                "z": z,
+                "intensity": w,
+            }
+            # Save to a pickle file:
+            with open(path_to_pickle_plot, 'wb') as pickle_file:
+                pickle.dump({**activation_points_dict, **atom_coords},
+                            pickle_file)
 
 
 def visualize_model_layer(
@@ -212,6 +235,8 @@ def visualize_model_layer(
     frame_set: FrameDiscretizedProteinsSequence,
     frame_index: ListOrInt,
     frame_model_path: Path = FRAME_CONV_MODEL,
+    save_plot_img: bool = SAVE_ACTIVATION_PLOTS_TO_IMAGE,
+    save_plot_picke: bool = SAVE_ACTIVATION_PLOTS_TO_PICKLE,
 ):
     """
     Visualizes specific layers (usually activation) in a frame.
@@ -219,13 +244,17 @@ def visualize_model_layer(
     Parameters
     ----------
     layer_depth : int
-        Spefiying the layer to be visualized
+        Spefiying the layer to be visualized.
     frame_set : FrameDiscretizedProteinsSequence
-        Class set of frames of voxelised proteins
+        Class set of frames of voxelised proteins.
     frame_index : int or list of int
-        Index (or indices) of frames to be visualized
+        Index (or indices) of frames to be visualized.
     frame_model_path : Path
-        Path to frame model
+        Path to frame model.
+    save_plot_img: bool
+        Whether to save the visualization as an image.
+    save_plot_picke: bool
+        Whether to save the visualization as a .pickle file.
     """
     frame_model = tf.keras.models.load_model(frame_model_path)
     print(
@@ -251,6 +280,8 @@ def visualize_model_layer(
             calculated_residue_probability=final_prediction[frame_index],
             real_residue=frame_set.dataset_map[frame_index][-1],
             frame_index=frame_index,
+            save_plot_img=save_plot_img,
+            save_plot_picke=save_plot_picke
         )
 
     # Visualize multiple indeces if list of integers
@@ -262,6 +293,8 @@ def visualize_model_layer(
                 calculated_residue_probability=final_prediction[i],
                 real_residue=frame_set.dataset_map[i][-1],
                 frame_index=i,
+                save_plot_img=save_plot_img,
+                save_plot_picke=save_plot_picke
             )
 
     else:

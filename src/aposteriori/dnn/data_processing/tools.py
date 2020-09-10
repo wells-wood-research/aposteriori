@@ -63,6 +63,7 @@ def extract_metadata_from_dataset(frame_dataset: Path) -> DatasetMetadata:
         )
     return dataset_metadata
 
+
 def create_flat_dataset_map(frame_dataset: Path) -> t.List[t.Tuple[str, int, str, str]]:
     """
     Flattens the structure of the h5 dataset for batching and balancing
