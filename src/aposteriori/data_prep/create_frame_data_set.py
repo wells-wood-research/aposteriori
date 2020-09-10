@@ -752,6 +752,29 @@ def process_paths(
     return
 
 
+def _select_pdb_chain(pdb_path: pathlib.Path, chain: str):
+    """
+    Select a chain from a pdb file
+
+    Parameters
+    ----------
+    pdb_path: pathlib.Path
+        Path to the pdb structure.
+    chain: Str
+        Chain to be selected for the pdb
+    Returns
+    -------
+    chain_pdb: Ampal Object
+        Ampal object with the selected chain
+    """
+    pdb_structure = ampal.load_pdb(pdb_path)
+    chain_pdb = pdb_structure[chain]
+    with open(pdb_path, "w") as f:
+        f.write(chain_pdb.pdb)
+
+    return chain_pdb
+
+
 def _fetch_pdb(
     pdb_code: str,
     output_folder: pathlib.Path = PDB_PATH,
@@ -778,16 +801,25 @@ def _fetch_pdb(
         Path to downloaded pdb
 
     """
+    assert (len(pdb_code) == 4) or (len(pdb_code) == 5), (
+        f"Expected pdb code to be of length 4 or 5 (pdb+chain) but "
+        f"got {len(pdb_code)}"
+    )
+    # Retrieve pdb:
     if download_assembly:
-        pdb_code_with_extension = f"{pdb_code}.pdb1"
+        pdb_code_with_extension = f"{pdb_code[:4]}.pdb1"
     else:
-        pdb_code_with_extension = f"{pdb_code}.pdb"
-
+        pdb_code_with_extension = f"{pdb_code[:4]}.pdb"
     output_path = output_folder / pdb_code_with_extension
     urllib.request.urlretrieve(
         pdb_request_url + pdb_code_with_extension,
         filename=output_path,
     )
+    # If PDB code is 5, user likely specified a chain
+    if len(pdb_code) == 5:
+        # Extract chain from string:
+        chain = pdb_code[0:4], pdb_code[-1]
+        _ = _select_pdb_chain(output_path, chain)
 
     return output_path
 
@@ -824,7 +856,8 @@ def download_pdb_from_csv_file(
         pathlib.Path(pdb_outpath).mkdir(parents=True, exist_ok=True)
 
     structure_file_paths = [
-        _fetch_pdb(pdb_code[:4], download_assembly=True, output_folder=pdb_outpath) for pdb_code in pdb_list
+        _fetch_pdb(pdb_code[:4], download_assembly=True, output_folder=pdb_outpath)
+        for pdb_code in pdb_list
     ]
 
     return structure_file_paths
