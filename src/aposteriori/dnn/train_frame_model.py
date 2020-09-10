@@ -98,18 +98,18 @@ if __name__ == "__main__":
     )
     tb_callback = create_tb_callback()
 
-    # Fit Model
-    _ = model.fit(
-        x=TRAINING_SET,
-        validation_data=VALIDATION_SET,
-        epochs=EPOCHS,
-        use_multiprocessing=MULTIPROCESSING,
-        workers=WORKERS,
-        callbacks=[csv_logger, checkpoint, confusion_plotter, tb_callback],
-    )
+    # # Fit Model
+    # _ = model.fit(
+    #     x=TRAINING_SET,
+    #     validation_data=VALIDATION_SET,
+    #     epochs=EPOCHS,
+    #     use_multiprocessing=MULTIPROCESSING,
+    #     workers=WORKERS,
+    #     callbacks=[csv_logger, checkpoint, confusion_plotter, tb_callback],
+    # )
     # Visualization of the activation layers:
-    if VISUALIZE_ACTIVATION_AFTER_TRAINING:
-        visualize_model_layer(-4, VALIDATION_SET, [1, 2])
+    # if VISUALIZE_ACTIVATION_AFTER_TRAINING:
+    #     visualize_model_layer(-4, VALIDATION_SET, [1, 2])
 
     # Visualization of the entropy of predictions:
     if VISUALIZE_ENTROPY_AFTER_TRAINING:
