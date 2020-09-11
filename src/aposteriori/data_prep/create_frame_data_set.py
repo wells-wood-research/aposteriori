@@ -752,6 +752,44 @@ def process_paths(
     return
 
 
+def _select_pdb_chain(pdb_path: pathlib.Path, chain: str):
+    """
+    Select a chain from a pdb file. The chain will remove the original pdb file.
+    At the moment we only support the selection of one chain at the time, meaning
+    if you wanted to selected chain A and B of a PDB, you should write it twice eg.
+    "6FMLA, 6FMLB".
+
+    Parameters
+    ----------
+    pdb_path: pathlib.Path
+        Path to the pdb structure.
+    chain: str
+        Chain to be selected for the pdb
+    Returns
+    -------
+    chain_pdb: ampal.Assembly
+        Ampal object with the selected chain
+    """
+    pdb_structure = ampal.load_pdb(pdb_path)
+    # Check if PDB structure is container and select assembly
+    if isinstance(pdb_structure, ampal.AmpalContainer):
+        warnings.warn(
+            f"Selecting the first state from the NMR structure {pdb_structure.id}"
+        )
+        pdb_structure = pdb_structure[0]
+
+    chain_pdb = pdb_structure[chain]
+    warnings.warn(f"ATTENTION: You selected chain {chain}, for PDB code {pdb_path}. We will replace the original PDB file with the selected chain. Remove the 5th letter of your PDB code if this is unwanted behaviour.")
+    # Save chain to file:
+    output_pdb_path = pathlib.Path(str(pdb_path.with_suffix("")) + chain + pdb_path.suffix)
+    with open(output_pdb_path, "w") as f:
+        f.write(chain_pdb.pdb)
+    # Delete original file
+    if pdb_path.exists():
+        pdb_path.unlink()
+    return chain_pdb
+
+
 def _fetch_pdb(
     pdb_code: str,
     output_folder: pathlib.Path = PDB_PATH,
@@ -778,16 +816,30 @@ def _fetch_pdb(
         Path to downloaded pdb
 
     """
-    if download_assembly:
-        pdb_code_with_extension = f"{pdb_code}.pdb1"
-    else:
-        pdb_code_with_extension = f"{pdb_code}.pdb"
 
+    # Remove empty spaces
+    pdb_code = pdb_code.strip(" ")
+
+    assert (len(pdb_code) == 4) or (len(pdb_code) == 5), (
+        f"Expected pdb code to be of length 4 or 5 (pdb+chain) but "
+        f"got {len(pdb_code)}"
+    )
+
+    # Retrieve pdb:
+    if download_assembly:
+        pdb_code_with_extension = f"{pdb_code[:4]}.pdb1"
+    else:
+        pdb_code_with_extension = f"{pdb_code[:4]}.pdb"
     output_path = output_folder / pdb_code_with_extension
     urllib.request.urlretrieve(
         pdb_request_url + pdb_code_with_extension,
         filename=output_path,
     )
+    # If PDB code is 5, user likely specified a chain
+    if len(pdb_code) == 5:
+        # Extract chain from string:
+        chain = pdb_code[-1]
+        _ = _select_pdb_chain(output_path, chain)
 
     return output_path
 
@@ -824,7 +876,8 @@ def download_pdb_from_csv_file(
         pathlib.Path(pdb_outpath).mkdir(parents=True, exist_ok=True)
 
     structure_file_paths = [
-        _fetch_pdb(pdb_code[:4], download_assembly=True, output_folder=pdb_outpath) for pdb_code in pdb_list
+        _fetch_pdb(pdb_code, download_assembly=True, output_folder=pdb_outpath)
+        for pdb_code in pdb_list
     ]
 
     return structure_file_paths
