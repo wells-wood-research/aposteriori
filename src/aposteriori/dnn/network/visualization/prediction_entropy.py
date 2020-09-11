@@ -38,7 +38,8 @@ def _annotate_ampalobj_with_data_tag(
 ) -> ampal.assembly:
     """
     Assigns a data point to each residue equivalent to the prediction the
-    tag value.
+    tag value. The original value of the tag will be reset to the minimum value
+    to allow for a more realistic color comparison.
 
     Parameters
     ----------
