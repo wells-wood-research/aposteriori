@@ -9,7 +9,7 @@ from ampal.protein import Polypeptide
 from scipy.stats import entropy
 
 from aposteriori.data_prep.create_frame_data_set import _fetch_pdb
-from aposteriori.dnn.config import (
+from aposteriori.config import (
     ANNOTATED_ENTROPY_PDB_PATH,
     DATA_FOLDER,
     PDB_CODES,

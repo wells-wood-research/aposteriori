@@ -7,11 +7,10 @@ import matplotlib.pyplot as plt
 import numpy as np
 import tensorflow as tf
 from ampal.amino_acids import standard_amino_acids
-from mpl_toolkits.mplot3d import Axes3D
 from scipy.ndimage.interpolation import zoom
 from tensorflow.keras.models import Model
 
-from aposteriori.dnn.config import (
+from aposteriori.config import (
     ACTIVATION_ALPHA,
     ATOM_COLORS,
     COLOR_MAP,
