@@ -143,7 +143,12 @@ Ideally, if you are trying to solve the Inverse Protein Folding Problem
  a protein. This prevents having solvent-exposed hydrophobic residues as
   training data. 
   
-To download the dataset and read more visit: https://pdbj.org/help/about-aubu
+Download the dataset: 
+- ftp://ftp.ebi.ac.uk/pub/databases/pdb/data/biounit/PDB (European Server)
+Alternative servers are available here (https://www.wwpdb.org/ftp/pdb-ftp-sites)
+
+To read more about biological units: https://pdbj.org/help/about-aubu and 
+https://pdb101.rcsb.org/learn/guide-to-understanding-pdb-data/biological-assemblies
 
 Once the dataset is downloaded, you will have a directory with sub-directory
  containig the gzipped PDB structures (ie. your Protein Data Bank Files). 

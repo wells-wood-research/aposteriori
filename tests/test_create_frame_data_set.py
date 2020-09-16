@@ -16,7 +16,7 @@ import pytest
 TEST_DATA_DIR = Path("tests/testing_files/pdb_files/")
 
 
-@settings(deadline=1000)
+@settings(deadline=1500)
 @given(integers(min_value=0, max_value=214))
 def test_create_residue_frame_cnocb_encoding(residue_number):
     assembly = ampal.load_pdb(str(TEST_DATA_DIR / "3qy1.pdb"))
@@ -76,7 +76,7 @@ def test_create_residue_frame_cnocb_encoding(residue_number):
     ), "N, CA and C should lie on the xy plane."
 
 
-@settings(deadline=700)
+@settings(deadline=1500)
 @given(integers(min_value=0, max_value=214))
 def test_create_residue_frame_backbone_only(residue_number):
     assembly = ampal.load_pdb(str(TEST_DATA_DIR / "3qy1.pdb"))

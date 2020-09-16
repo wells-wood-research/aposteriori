@@ -21,7 +21,7 @@ import h5py
 import numpy as np
 
 from ampal.amino_acids import standard_amino_acids
-from aposteriori.dnn.config import (
+from aposteriori.config import (
     UNCOMMON_RESIDUE_DICT,
     MAKE_FRAME_DATASET_VER,
     PDB_PATH,
@@ -779,9 +779,13 @@ def _select_pdb_chain(pdb_path: pathlib.Path, chain: str):
         pdb_structure = pdb_structure[0]
 
     chain_pdb = pdb_structure[chain]
-    warnings.warn(f"ATTENTION: You selected chain {chain}, for PDB code {pdb_path}. We will replace the original PDB file with the selected chain. Remove the 5th letter of your PDB code if this is unwanted behaviour.")
+    warnings.warn(
+        f"ATTENTION: You selected chain {chain}, for PDB code {pdb_path}. We will replace the original PDB file with the selected chain. Remove the 5th letter of your PDB code if this is unwanted behaviour."
+    )
     # Save chain to file:
-    output_pdb_path = pathlib.Path(str(pdb_path.with_suffix("")) + chain + pdb_path.suffix)
+    output_pdb_path = pathlib.Path(
+        str(pdb_path.with_suffix("")) + chain + pdb_path.suffix
+    )
     with open(output_pdb_path, "w") as f:
         f.write(chain_pdb.pdb)
     # Delete original file

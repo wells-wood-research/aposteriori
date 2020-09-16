@@ -1,0 +1,4 @@
+include README.md
+include LICENSE.txt
+include logo.png
+recursive-include src *
