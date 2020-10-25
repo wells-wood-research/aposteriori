@@ -3,6 +3,7 @@
 In this type of dataset, all individual entries are stored separately in a flat
 structure.
 """
+import copy
 import csv
 import glob
 import gzip
@@ -22,10 +23,12 @@ import numpy as np
 
 from ampal.amino_acids import standard_amino_acids
 from aposteriori.config import (
-    UNCOMMON_RESIDUE_DICT,
+    ATOMIC_CENTER,
+    GAUSSIAN_ATOMS,
     MAKE_FRAME_DATASET_VER,
     PDB_PATH,
     PDB_REQUEST_URL,
+    UNCOMMON_RESIDUE_DICT,
 )
 
 
@@ -116,7 +119,7 @@ class Codec:
         # Creating empty atom encoding:
         encoded_atom = np.zeros(self.encoder_length, dtype=bool)
         # Attempt encoding:
-        if atom_label in list(self.label_to_encoding.keys()):
+        if atom_label in set(self.label_to_encoding.keys()):
             atom_idx = self.label_to_encoding[atom_label]
             encoded_atom[atom_idx] = True
         # Encode CA as C in case it is not in the labels:
@@ -128,6 +131,56 @@ class Codec:
                 f"{atom_label} not found in {self.atomic_labels} encoding. Returning None."
             )
 
+        return encoded_atom
+
+    def encode_gaussian_atom(self, atom_label) -> np.ndarray:
+        """
+        Encodes atom as a 3x3 gaussian with length of encoder length. Only the
+        C, N and O atoms are represented in gaussian form. If Ca and Cb are
+        encoded separately, they will be represented as a 1 at their respective
+        x,y,z position.
+
+        Parameters
+        ----------
+        atom_label: str
+            Label of the atom to be encoded.
+
+        Returns
+        -------
+        atom_encoding: np.ndarray
+            Boolean array with atom encoding of shape (3, 3, 3, encoder_length,)
+
+        """
+        # Creating empty atom encoding:
+        encoded_atom = np.zeros((3, 3, 3, self.encoder_length))
+        # Attempt encoding:
+        if atom_label in set(self.label_to_encoding.keys()):
+            atom_idx = self.label_to_encoding[atom_label]
+            # Fix labels:
+            if self.encoder_length == 3:
+                # In this scenario, the encoder is C,N,O so Cb and Ca are just C atoms
+                if atom_label == "Cb" or "Ca":
+                    atom_label = "C"
+            elif self.encoder_length == 4:
+                # In this scenario, Ca is a carbon atom but Cb has a separate channel
+                if atom_label == "Ca":
+                    atom_label = "C"
+            # else: atom_label is contained in the encoding, so no need to do anything
+
+            # If label to encode is C, N, O:
+            if atom_idx in set(GAUSSIAN_ATOMS.keys()):
+                # Get encoding:
+                atom_to_encode = GAUSSIAN_ATOMS[str(atom_idx)]
+                # Add to original atom:
+                encoded_atom[:, :, :, atom_idx] += atom_to_encode
+            # If label encodes Cb and Ca as separate channels (ie, not CNO):
+            elif atom_label in set(self.label_to_encoding.keys()):
+                atom_to_encode = GAUSSIAN_ATOMS[str(0)]
+                encoded_atom[:, :, :, atom_idx] += atom_to_encode
+            else:
+                warnings.warn(
+                    f"{atom_label} not found in {self.atomic_labels} encoding. Returning empty array."
+                )
         return encoded_atom
 
     def decode_atom(self, encoded_atom: np.ndarray) -> t.Optional[str]:
@@ -282,12 +335,83 @@ def encode_residue(residue: str) -> np.ndarray:
     return residue_encoding
 
 
+def add_gaussian_at_position(
+    main_matrix: np.ndarray,
+    secondary_matrix: np.ndarray,
+    atom_coord: t.Tuple[int, int, int],
+    atom_idx: int,
+    atomic_center: t.Tuple[int, int, int] = ATOMIC_CENTER,
+) -> np.ndarray:
+    """
+    # TODO
+
+    Parameters
+    ----------
+    main_matrix
+    secondary_matrix
+    atom_coord
+    atom_idx
+    atomic_center
+
+    Returns
+    -------
+
+    """
+
+    # Deep copy the main matrix:
+    density_frame = copy.deepcopy(main_matrix)
+
+    # Remember in a 4D matrix, our 4th dimension is the length of the atom_encoder.
+    # This means that to obtain a 3D frame we can just select array[:,:,:, ATOM_NUMBER]
+    # Select 3D frame of the atom to be added:
+    empty_frame_voxels = np.zeros(
+        (density_frame[:, :, :, atom_idx].shape), dtype=np.float16
+    )
+    # Slice the atom density matrix:
+    # This is necessary in case we are at the edge of the frame in which case we
+    # need to cut the bits that will not be added.
+    density_matrix_slice = secondary_matrix[
+                    max(atomic_center[0] - atom_coord[0], 0) : atomic_center[0]  # min y
+                    - atom_coord[0]
+                    + empty_frame_voxels.shape[0],  # max y
+                    max(atomic_center[1] - atom_coord[1], 0) : atomic_center[1]  # min x
+                    - atom_coord[1]
+                    + empty_frame_voxels.shape[1],  # max x
+                    max(atomic_center[2] - atom_coord[2], 0) : atomic_center[2]  # min z
+                    - atom_coord[2]
+                    + empty_frame_voxels.shape[2],  # max z
+                ]
+    # Slice the Frame to select the portion that contains the atom of interest:
+    frame_slice = empty_frame_voxels[
+        max(atom_coord[0] - int(density_matrix_slice.shape[0] / 2), 0
+        ) : max(atom_coord[0] - int(density_matrix_slice.shape[0] / 2), 0)
+        + density_matrix_slice.shape[0],  # max y
+        max(
+            atom_coord[1] - int(density_matrix_slice.shape[1] / 2), 0
+        ) : max(atom_coord[1] - int(density_matrix_slice.shape[1] / 2), 0)
+        + density_matrix_slice.shape[1],  # max x
+        max(
+            atom_coord[2] - int(density_matrix_slice.shape[2] / 2), 0
+        ) : max(atom_coord[2] - int(density_matrix_slice.shape[2] / 2), 0)
+        + density_matrix_slice.shape[2],  # max z
+    ]
+    # Add atom density to the frame:
+    frame_slice += density_matrix_slice
+    # Normalize densities by sum of all densities (so that they all sum up to 1):
+    frame_normalized_densities = empty_frame_voxels / np.sum(empty_frame_voxels)
+    # Add to original array:
+    density_frame[:, :, :, atom_idx] += frame_normalized_densities
+
+    return density_frame
+
+
 def create_residue_frame(
     residue: ampal.Residue,
     frame_edge_length: float,
     voxels_per_side: int,
     encode_cb: bool,
     codec: object,
+    voxels_as_gaussian: bool = False,  # TODO
 ) -> np.ndarray:
     """Creates a discrete representation of a volume of space around a residue.
 
@@ -339,8 +463,9 @@ def create_residue_frame(
 
     frame = np.zeros(
         (voxels_per_side, voxels_per_side, voxels_per_side, codec.encoder_length),
-        dtype=bool,
     )
+    # Change frame type to float if gaussian else use bool:
+    frame = frame.astype(np.float16) if voxels_as_gaussian else frame.astype(np.bool)
     # iterate through all atoms within the frame
     for atom in (
         a
@@ -360,22 +485,48 @@ def create_residue_frame(
             f"Residue mol_code should not be blank:\n"
             f"{cha.id}:{res.id}:{atom.res_label}"
         )
-        np.testing.assert_array_equal(
-            frame[indices], np.array([False] * len(frame[indices]), dtype=bool)
-        )
         assert frame[indices][0] == False, (
             f"Voxel should not be occupied: Currently "
             f"{frame[indices]}, "
             f"{ass.id}:{cha.id}:{res.id}:{atom.res_label}"
         )
-        frame[indices] = Codec.encode_atom(codec, atom.res_label)
+        if voxels_as_gaussian:
+            np.testing.assert_array_equal(
+                frame[indices], np.array([0.0] * len(frame[indices]), dtype=np.float16)
+            )
+        else:
+            np.testing.assert_array_equal(
+                frame[indices], np.array([False] * len(frame[indices]), dtype=bool)
+            )
+        # Encode atoms:
+        if voxels_as_gaussian:
+            # There's a lot of repetition in these steps, for example with the atom idx
+            # However I wanted to be sure all the steps were as explicit as possible.
+            # Encode gaussian
+            gaussian_matrix = Codec.encode_gaussian_atom(
+                codec, atom.res_label, atom.element
+            )
+            # Obtain atom idx:
+            atom_idx = np.nonzero(gaussian_matrix)[-1][0]
+            gaussian_atom = gaussian_matrix[:, :, :, atom_idx]
+            # Add at position
+            frame = add_gaussian_at_position(main_matrix=frame, secondary_matrix=gaussian_atom, atom_coord=indices, atom_idx=atom_idx)
+
+        else:
+            # Encode atom as voxel:
+            frame[indices] = Codec.encode_atom(codec, atom.res_label)
+
     centre = voxels_per_side // 2
 
     # Check whether central atom is C:
     if "CA" in codec.atomic_labels:
-        assert (
-            frame[centre, centre, centre][4] == 1
-        ), f"The central atom should be Carbon, but it is {frame[centre, centre, centre]}."
+        if voxels_as_gaussian:
+            np.testing.assert_array_equal(
+                frame[centre, centre, centre][4], 1., dtype=np.float16)
+        else:
+            assert (
+                frame[centre, centre, centre][4] == 1
+            ), f"The central atom should be Carbon, but it is {frame[centre, centre, centre]}."
     else:
         assert (
             frame[centre, centre, centre][0] == 1
@@ -422,7 +573,6 @@ def create_frames_from_structure(
         True, it will not be filtered by the `atom_filter_fn`.
     codec: object
         Codec object with encoding instructions.
-
     """
     name = structure_path.name.split(".")[0]
     chain_dict: ChainDict = {}
