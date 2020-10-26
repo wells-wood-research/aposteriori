@@ -4,7 +4,7 @@ from ampal.data import ELEMENT_DATA
 import numpy as np
 
 # Config paths
-MAKE_FRAME_DATASET_VER = "0.1.0"
+MAKE_FRAME_DATASET_VER = "1.0.0"
 PROJECT_ROOT_DIR = pathlib.Path(__file__).parent
 DATA_FOLDER = PROJECT_ROOT_DIR / "data"
 DATA_FOLDER.mkdir(parents=True, exist_ok=True)
