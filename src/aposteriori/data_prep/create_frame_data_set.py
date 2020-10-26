@@ -39,6 +39,7 @@ class ResidueResult:
     label: str
     encoded_residue: np.ndarray
     data: np.ndarray
+    voxels_as_gaussian: bool
 
 
 @dataclass
@@ -50,6 +51,8 @@ class DatasetMetadata:
     atom_filter_fn: str
     residue_encoder: t.List[str]
     frame_edge_length: float
+    voxels_as_gaussian: bool
+
 
     @classmethod
     def import_metadata_dict(cls, meta_dict: t.Dict[str, t.Any]):
@@ -156,32 +159,36 @@ class Codec:
         # Attempt encoding:
         if atom_label in set(self.label_to_encoding.keys()):
             atom_idx = self.label_to_encoding[atom_label]
-            # Fix labels:
-            if self.encoder_length == 3:
-                # In this scenario, the encoder is C,N,O so Cb and Ca are just C atoms
-                if atom_label == "Cb" or "Ca":
-                    atom_label = "C"
-            elif self.encoder_length == 4:
-                # In this scenario, Ca is a carbon atom but Cb has a separate channel
-                if atom_label == "Ca":
-                    atom_label = "C"
-            # else: atom_label is contained in the encoding, so no need to do anything
-
-            # If label to encode is C, N, O:
-            if atom_idx in set(GAUSSIAN_ATOMS.keys()):
-                # Get encoding:
-                atom_to_encode = GAUSSIAN_ATOMS[str(atom_idx)]
-                # Add to original atom:
-                encoded_atom[:, :, :, atom_idx] += atom_to_encode
-            # If label encodes Cb and Ca as separate channels (ie, not CNO):
-            elif atom_label in set(self.label_to_encoding.keys()):
-                atom_to_encode = GAUSSIAN_ATOMS[str(0)]
-                encoded_atom[:, :, :, atom_idx] += atom_to_encode
-            else:
-                warnings.warn(
-                    f"{atom_label} not found in {self.atomic_labels} encoding. Returning empty array."
+        # Fix labels:
+        elif self.encoder_length == 3:
+            # In this scenario, the encoder is C,N,O so Cb and Ca are just C atoms
+            if atom_label == "Cb" or "Ca":
+                atom_label = "C"
+                atom_idx = self.label_to_encoding[atom_label]
+        elif self.encoder_length == 4:
+            # In this scenario, Ca is a carbon atom but Cb has a separate channel
+            if atom_label == "Ca":
+                atom_label = "C"
+                atom_idx = self.label_to_encoding[atom_label]
+        else:
+            warnings.warn(
+                f"{atom_label} not found in {self.atomic_labels} encoding. Returning empty array."
                 )
-        return encoded_atom
+        # If label to encode is C, N, O:
+        if atom_idx in set(GAUSSIAN_ATOMS.keys()):
+            # Get encoding:
+            atom_to_encode = GAUSSIAN_ATOMS[str(atom_idx)]
+            # Add to original atom:
+            encoded_atom[:, :, :, atom_idx] += atom_to_encode
+        # If label encodes Cb and Ca as separate channels (ie, not CNO):
+        elif atom_label in set(self.label_to_encoding.keys()):
+            atom_to_encode = GAUSSIAN_ATOMS[str(0)]
+            encoded_atom[:, :, :, atom_idx] += atom_to_encode
+        else:
+            warnings.warn(
+                f"{atom_label} not found in {self.atomic_labels} encoding. Returning empty array."
+                )
+        return encoded_atom, atom_idx
 
     def decode_atom(self, encoded_atom: np.ndarray) -> t.Optional[str]:
         """
@@ -343,19 +350,26 @@ def add_gaussian_at_position(
     atomic_center: t.Tuple[int, int, int] = ATOMIC_CENTER,
 ) -> np.ndarray:
     """
-    # TODO
+    Adds a 3D array (of a gaussian atom) to a specific coordinate of a frame.
 
     Parameters
     ----------
-    main_matrix
-    secondary_matrix
-    atom_coord
-    atom_idx
-    atomic_center
+    main_matrix: np.ndarray
+        Frame 4D array VxVxVxE where V is the n. of voxels and E is the length of
+        the encoder.
+    secondary_matrix: np.ndarray
+        3D matrix containing gaussian atom. Usually 3x3x3
+    atom_coord: t.Tuple[int, int, int]
+        Coordinates of the atom in voxel numbers
+    atom_idx: int
+        Denotes the atom position in the encoder (eg. C = 0)
+    atomic_center: t.Tuple[int, int, int]
+        Center of the atom within the Gaussian representation
 
     Returns
     -------
-
+    density_frame: np.ndarray
+        Frame 4D array with gaussian atom added into it.
     """
 
     # Deep copy the main matrix:
@@ -381,6 +395,8 @@ def add_gaussian_at_position(
                     - atom_coord[2]
                     + empty_frame_voxels.shape[2],  # max z
                 ]
+    # Normalize local densities by sum of all densities (so that they all sum up to 1):
+    density_matrix_slice /= np.sum(density_matrix_slice)
     # Slice the Frame to select the portion that contains the atom of interest:
     frame_slice = empty_frame_voxels[
         max(atom_coord[0] - int(density_matrix_slice.shape[0] / 2), 0
@@ -397,10 +413,8 @@ def add_gaussian_at_position(
     ]
     # Add atom density to the frame:
     frame_slice += density_matrix_slice
-    # Normalize densities by sum of all densities (so that they all sum up to 1):
-    frame_normalized_densities = empty_frame_voxels / np.sum(empty_frame_voxels)
     # Add to original array:
-    density_frame[:, :, :, atom_idx] += frame_normalized_densities
+    density_frame[:, :, :, atom_idx] += empty_frame_voxels
 
     return density_frame
 
@@ -411,7 +425,7 @@ def create_residue_frame(
     voxels_per_side: int,
     encode_cb: bool,
     codec: object,
-    voxels_as_gaussian: bool = False,  # TODO
+    voxels_as_gaussian: bool = False,
 ) -> np.ndarray:
     """Creates a discrete representation of a volume of space around a residue.
 
@@ -433,6 +447,8 @@ def create_residue_frame(
         Whether to encode the Cb at an average position in the frame.
     codec: object
         Codec object with encoding instructions.
+    voxels_as_gaussian: bool
+        Whether to encode voxels as gaussians.
 
     Returns
     -------
@@ -485,33 +501,27 @@ def create_residue_frame(
             f"Residue mol_code should not be blank:\n"
             f"{cha.id}:{res.id}:{atom.res_label}"
         )
-        assert frame[indices][0] == False, (
-            f"Voxel should not be occupied: Currently "
-            f"{frame[indices]}, "
-            f"{ass.id}:{cha.id}:{res.id}:{atom.res_label}"
-        )
-        if voxels_as_gaussian:
-            np.testing.assert_array_equal(
-                frame[indices], np.array([0.0] * len(frame[indices]), dtype=np.float16)
+        if not voxels_as_gaussian:
+            assert frame[indices][0] == False, (
+                f"Voxel should not be occupied: Currently "
+                f"{frame[indices]}, "
+                f"{ass.id}:{cha.id}:{res.id}:{atom.res_label}"
             )
-        else:
+            # If the voxel is a gaussian, there may be remnants of a nearby atom
+            # hence this test would fail
+        if not voxels_as_gaussian:
             np.testing.assert_array_equal(
                 frame[indices], np.array([False] * len(frame[indices]), dtype=bool)
             )
         # Encode atoms:
         if voxels_as_gaussian:
-            # There's a lot of repetition in these steps, for example with the atom idx
-            # However I wanted to be sure all the steps were as explicit as possible.
-            # Encode gaussian
-            gaussian_matrix = Codec.encode_gaussian_atom(
-                codec, atom.res_label, atom.element
+            # Get Gaussian encoding
+            gaussian_matrix, atom_idx = Codec.encode_gaussian_atom(
+                codec, atom.res_label
             )
-            # Obtain atom idx:
-            atom_idx = np.nonzero(gaussian_matrix)[-1][0]
             gaussian_atom = gaussian_matrix[:, :, :, atom_idx]
-            # Add at position
+            # Add at position:
             frame = add_gaussian_at_position(main_matrix=frame, secondary_matrix=gaussian_atom, atom_coord=indices, atom_idx=atom_idx)
-
         else:
             # Encode atom as voxel:
             frame[indices] = Codec.encode_atom(codec, atom.res_label)
@@ -521,17 +531,20 @@ def create_residue_frame(
     # Check whether central atom is C:
     if "CA" in codec.atomic_labels:
         if voxels_as_gaussian:
-            np.testing.assert_array_equal(
-                frame[centre, centre, centre][4], 1., dtype=np.float16)
+            np.testing.assert_array_almost_equal(
+                frame[centre, centre, centre][0], 0.5, decimal=2)
         else:
             assert (
                 frame[centre, centre, centre][4] == 1
             ), f"The central atom should be Carbon, but it is {frame[centre, centre, centre]}."
     else:
-        assert (
-            frame[centre, centre, centre][0] == 1
-        ), f"The central atom should be Carbon, but it is {frame[centre, centre, centre]}."
-
+        if voxels_as_gaussian:
+            np.testing.assert_array_almost_equal(
+                frame[centre, centre, centre][0], 0.5, decimal= 2)
+        else:
+            assert (
+                frame[centre, centre, centre][0] == 1
+            ), f"The central atom should be Carbon, but it is {frame[centre, centre, centre]}."
     return frame
 
 
@@ -545,6 +558,7 @@ def create_frames_from_structure(
     verbosity: int,
     encode_cb: bool,
     codec: object,
+    voxels_as_gaussian: bool
 ) -> t.Tuple[str, ChainDict]:
     """Creates residue frames for each residue in the structure.
 
@@ -573,6 +587,8 @@ def create_frames_from_structure(
         True, it will not be filtered by the `atom_filter_fn`.
     codec: object
         Codec object with encoding instructions.
+    voxels_as_gaussian: bool
+        Whether to encode voxels as gaussians.
     """
     name = structure_path.name.split(".")[0]
     chain_dict: ChainDict = {}
@@ -619,7 +635,9 @@ def create_frames_from_structure(
                     voxels_per_side=voxels_per_side,
                     encode_cb=encode_cb,
                     codec=codec,
+                    voxels_as_gaussian=voxels_as_gaussian
                 )
+                print(0)
                 encoded_residue = encode_residue(residue.mol_code)
                 # Save results:
                 chain_dict[chain.id].append(
@@ -628,8 +646,10 @@ def create_frames_from_structure(
                         label=residue.mol_code,
                         encoded_residue=encoded_residue,
                         data=array,
+                        voxels_as_gaussian=voxels_as_gaussian
                     )
                 )
+                print(1)
                 if verbosity > 1:
                     print(f"{name}:\t\tAdded residue {chain.id}:{residue.id}.")
         if verbosity > 0:
@@ -674,6 +694,7 @@ def process_single_path(
     verbosity: int,
     encode_cb: bool,
     codec: object,
+    voxels_as_gaussian: bool,
 ):
     """Processes a path and puts the results into a queue."""
     chain_filter_list: t.Optional[t.List[str]]
@@ -698,6 +719,7 @@ def process_single_path(
                 verbosity,
                 encode_cb,
                 codec,
+                voxels_as_gaussian=voxels_as_gaussian,
             )
         except Exception as e:
             result = str(e)
@@ -732,6 +754,7 @@ def save_results(
                 # Encode metadata:
                 metadata_dict = metadata.__dict__
                 # Loop through metadata dataclass and add it as attribute:
+                print(2)
                 for meta, meta_attribute in metadata_dict.items():
                     hd5.attrs[str(meta)] = meta_attribute
 
@@ -757,10 +780,12 @@ def save_results(
                                 f"chain group, skipping."
                             )
                             continue
+                        # Change type of voxel saved to hdf5 file depending on type of voxel used:
+                        voxel_output_type = float if metadata_dict['voxels_as_gaussian'] else bool
                         res_dataset = chain_group.create_dataset(
                             res_result.residue_id,
                             data=res_result.data,
-                            dtype=bool,
+                            dtype=voxel_output_type,
                         )
                         res_dataset.attrs["label"] = res_result.label
                         res_dataset.attrs[
@@ -785,6 +810,7 @@ def process_paths(
     verbosity: int,
     encode_cb: bool,
     codec: object,
+    voxels_as_gaussian: bool,
 ):
     """Discretizes a list of structures and stores them in a HDF5 object.
 
@@ -816,6 +842,8 @@ def process_paths(
         Whether to encode the Cb at an average position in the frame.
     codec: object
         Codec object with encoding instructions.
+    voxels_as_gaussian: bool
+        Whether to encode voxels as gaussians.
     """
 
     with mp.Manager() as manager:
@@ -845,6 +873,7 @@ def process_paths(
                     verbosity,
                     encode_cb,
                     codec,
+                    voxels_as_gaussian,
                 ),
             )
             for proc_i in range(processes)
@@ -862,6 +891,7 @@ def process_paths(
             atom_filter_fn=str(atom_filter_fn),
             residue_encoder=list(standard_amino_acids.values()),
             frame_edge_length=frame_edge_length,
+            voxels_as_gaussian=voxels_as_gaussian
         )
         storer = mp.Process(
             target=save_results,
@@ -1051,6 +1081,7 @@ def make_frame_dataset(
     verbosity: int = 1,
     require_confirmation: bool = True,
     encode_cb: bool = True,
+    voxels_as_gaussian: bool = False
 ) -> pathlib.Path:
     """Creates a dataset of voxelized amino acid frames.
 
@@ -1087,6 +1118,9 @@ def make_frame_dataset(
         If True, the user will be prompted to start creating the dataset.
     encode_cb: bool
         Whether to encode the Cb at an average position in the frame.
+    voxels_as_gaussian: bool
+        Whether to encode voxels as gaussians.
+
     Returns
     -------
     output_file_path: pathlib.Path
@@ -1155,6 +1189,7 @@ def make_frame_dataset(
         verbosity=verbosity,
         encode_cb=encode_cb,
         codec=codec,
+        voxels_as_gaussian=voxels_as_gaussian,
     )
     return output_file_path
 
