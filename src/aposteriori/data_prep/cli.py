@@ -127,6 +127,15 @@ from aposteriori.data_prep.create_frame_data_set import (
         "Path to csv file with PDB codes to be voxelised. The biological assembly will be used for download. PDB codes will be downloaded the /pdb/ folder."
     ),
 )
+@click.option(
+    "-g",
+    "--voxels_as_gaussian",
+    type=bool,
+    default=False,
+    help=(
+        "Boolean - whether to encode voxels as gaussians (True) or (Voxels). The gaussian representation uses the wanderwaal's radius of each atom using the formula e^(-x^2) where x is Vx - x)^2 + (Vy - y)^2) + (Vz - z)^2)/ r^2 and  (Vx, Vy, Vz) is the position of the voxel in space. (x, y, z) is the position of the atom in space, r is the Van der Waal’s radius of the atom. They are then normalized to add up to 1."
+    ),
+)
 def cli(
     structure_file_folder: str,
     output_folder: str,
@@ -142,6 +151,7 @@ def cli(
     encode_cb: bool,
     atom_encoder: str,
     download_file: str,
+    voxels_as_gaussian: bool
 ):
     """Creates a dataset of voxelized amino acid frames.
 
@@ -184,6 +194,7 @@ def cli(
     └─.attrs['atom_filter_fn']: str - Function used to filter the atoms in the frame.
     └─.attrs['residue_encoder']: t.List[str] - Ordered list of residues corresponding to the encoding used.
     └─.attrs['frame_edge_length']: float - Length of the frame in Angstroms (A)
+    └─.attrs['voxels_as_gaussian']: bool - Whether the voxels are encoded as a floating point of a gaussian (True) or boolean (False)
 
     So hdf5['1ctf']['A']['58'] would be an array for the voxelized.
     """
@@ -240,6 +251,7 @@ def cli(
         gzipped=gzipped,
         verbosity=verbose,
         encode_cb=encode_cb,
+        voxels_as_gaussian=voxels_as_gaussian
     )
     return
 
