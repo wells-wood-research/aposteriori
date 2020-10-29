@@ -198,11 +198,11 @@ def cli(
 
     So hdf5['1ctf']['A']['58'] would be an array for the voxelized.
     """
-    # If a download file is specified, open and download
-    if pathlib.Path(download_file).exists():
-        structure_files: t.List[StrOrPath] = download_pdb_from_csv_file(
-            pathlib.Path(download_file)
-        )
+    # If a download file is specified, open the file and download
+    if download_file and pathlib.Path(download_file).exists():
+            structure_files: t.List[StrOrPath] = download_pdb_from_csv_file(
+                pathlib.Path(download_file)
+            )
     else:
         # Extract all the PDBs in folder:
         if pathlib.Path(structure_file_folder).exists():
