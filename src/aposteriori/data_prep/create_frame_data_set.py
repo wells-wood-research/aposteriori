@@ -157,17 +157,17 @@ class Codec:
         # Creating empty atom encoding:
         encoded_atom = np.zeros((3, 3, 3, self.encoder_length))
         # Attempt encoding:
-        if atom_label in set(self.label_to_encoding.keys()):
-            atom_idx = self.label_to_encoding[atom_label]
+        if atom_label.upper() in set(self.label_to_encoding.keys()):
+            atom_idx = self.label_to_encoding[atom_label.upper()]
         # Fix labels:
         elif self.encoder_length == 3:
             # In this scenario, the encoder is C,N,O so Cb and Ca are just C atoms
-            if atom_label == "Cb" or "Ca":
+            if (atom_label.upper() == "CA") or (atom_label.upper() == "CB"):
                 atom_label = "C"
                 atom_idx = self.label_to_encoding[atom_label]
         elif self.encoder_length == 4:
             # In this scenario, Ca is a carbon atom but Cb has a separate channel
-            if atom_label == "Ca":
+            if  (atom_label.upper() == "CA"):
                 atom_label = "C"
                 atom_idx = self.label_to_encoding[atom_label]
         else:
@@ -181,7 +181,7 @@ class Codec:
             # Add to original atom:
             encoded_atom[:, :, :, atom_idx] += atom_to_encode
         # If label encodes Cb and Ca as separate channels (ie, not CNO):
-        elif atom_label in set(self.label_to_encoding.keys()):
+        elif atom_label.upper() in set(self.label_to_encoding.keys()):
             atom_to_encode = GAUSSIAN_ATOMS[str(0)]
             encoded_atom[:, :, :, atom_idx] += atom_to_encode
         else:
@@ -637,7 +637,6 @@ def create_frames_from_structure(
                     codec=codec,
                     voxels_as_gaussian=voxels_as_gaussian
                 )
-                print(0)
                 encoded_residue = encode_residue(residue.mol_code)
                 # Save results:
                 chain_dict[chain.id].append(
@@ -649,7 +648,6 @@ def create_frames_from_structure(
                         voxels_as_gaussian=voxels_as_gaussian
                     )
                 )
-                print(1)
                 if verbosity > 1:
                     print(f"{name}:\t\tAdded residue {chain.id}:{residue.id}.")
         if verbosity > 0:
@@ -754,7 +752,6 @@ def save_results(
                 # Encode metadata:
                 metadata_dict = metadata.__dict__
                 # Loop through metadata dataclass and add it as attribute:
-                print(2)
                 for meta, meta_attribute in metadata_dict.items():
                     hd5.attrs[str(meta)] = meta_attribute
 
