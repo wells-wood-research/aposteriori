@@ -24,7 +24,7 @@ import numpy as np
 from ampal.amino_acids import standard_amino_acids
 from aposteriori.config import (
     ATOMIC_CENTER,
-    GAUSSIAN_ATOMS,
+    ATOM_WANDERWAAL_RADII,
     MAKE_FRAME_DATASET_VER,
     PDB_PATH,
     PDB_REQUEST_URL,
@@ -52,7 +52,6 @@ class DatasetMetadata:
     residue_encoder: t.List[str]
     frame_edge_length: float
     voxels_as_gaussian: bool
-
 
     @classmethod
     def import_metadata_dict(cls, meta_dict: t.Dict[str, t.Any]):
@@ -136,7 +135,9 @@ class Codec:
 
         return encoded_atom
 
-    def encode_gaussian_atom(self, atom_label) -> np.ndarray:
+    def encode_gaussian_atom(
+        self, atom_label: str, modifiers_triple: t.Tuple[float, float, float]
+    ) -> (np.ndarray, int):
         """
         Encodes atom as a 3x3 gaussian with length of encoder length. Only the
         C, N and O atoms are represented in gaussian form. If Ca and Cb are
@@ -147,6 +148,9 @@ class Codec:
         ----------
         atom_label: str
             Label of the atom to be encoded.
+        modifiers_triple: t.Tuple[float, float, float]
+            Triple of the difference between the discretized coordinate and the
+            undiscretized coordinate.
 
         Returns
         -------
@@ -167,27 +171,34 @@ class Codec:
                 atom_idx = self.label_to_encoding[atom_label]
         elif self.encoder_length == 4:
             # In this scenario, Ca is a carbon atom but Cb has a separate channel
-            if  (atom_label.upper() == "CA"):
+            if atom_label.upper() == "CA":
                 atom_label = "C"
                 atom_idx = self.label_to_encoding[atom_label]
         else:
             warnings.warn(
                 f"{atom_label} not found in {self.atomic_labels} encoding. Returning empty array."
-                )
+            )
         # If label to encode is C, N, O:
-        if atom_idx in set(GAUSSIAN_ATOMS.keys()):
+        if atom_idx in set(ATOM_WANDERWAAL_RADII.keys()):
             # Get encoding:
-            atom_to_encode = GAUSSIAN_ATOMS[str(atom_idx)]
+            atomic_radius = ATOM_WANDERWAAL_RADII[atom_idx]
+            atom_to_encode = convert_atom_to_gaussian_density(
+                modifiers_triple, atomic_radius
+            )
             # Add to original atom:
             encoded_atom[:, :, :, atom_idx] += atom_to_encode
         # If label encodes Cb and Ca as separate channels (ie, not CNO):
         elif atom_label.upper() in set(self.label_to_encoding.keys()):
-            atom_to_encode = GAUSSIAN_ATOMS[str(0)]
+            # Get encoding:
+            atomic_radius = ATOM_WANDERWAAL_RADII[0]
+            atom_to_encode = convert_atom_to_gaussian_density(
+                modifiers_triple, atomic_radius
+            )
             encoded_atom[:, :, :, atom_idx] += atom_to_encode
         else:
             warnings.warn(
                 f"{atom_label} not found in {self.atomic_labels} encoding. Returning empty array."
-                )
+            )
         return encoded_atom, atom_idx
 
     def decode_atom(self, encoded_atom: np.ndarray) -> t.Optional[str]:
@@ -342,6 +353,105 @@ def encode_residue(residue: str) -> np.ndarray:
     return residue_encoding
 
 
+def convert_atom_to_gaussian_density(
+    modifiers_triple: t.Tuple[float, float, float],
+    wanderwaal_radius: float,
+    range_val: int = 2,
+    resolution: int = 99,
+):
+    """
+    Converts an atom at a coordinate, with specific modifiers due to a discretization,
+    into a 3x3x3 gaussian.
+
+    Parameters
+    ----------
+    modifiers_triple: t.Tuple[float, float, float]
+        Triple of the difference between the discretized coordinate and the undiscretized coordinate.
+    wanderwaal_radius: float
+        Wanderwaal radius of the current atom being discretized.
+    range_val: int
+        Range values for the gaussian. Default = 2
+    resolution: int
+        Number of points selected between the `range_val` to calculate the density. Default = 99
+
+    Returns
+    -------
+    norm_gaussian_frame: np.ndarray
+        3x3x3 Frame encoding for a gaussian atom
+    """
+    # Unpack x, y, z:
+    x, y, z = modifiers_triple
+    # Obtain x, y, z ranges for the gaussian
+    x_range = y_range = z_range = np.linspace(-range_val, range_val, resolution)
+    # Calculate density for each axis at each point
+    x_vals, y_vals, z_vals = (
+        np.exp(-1 * ((x_range - x) / wanderwaal_radius) ** 2, dtype=np.float16),
+        np.exp(-1 * ((y_range - y) / wanderwaal_radius) ** 2, dtype=np.float16),
+        np.exp(-1 * ((z_range - z) / wanderwaal_radius) ** 2, dtype=np.float16),
+    )
+
+    x_densities = []
+    y_densities = []
+    z_densities = []
+    r = resolution // 3
+    # Integrate to get area under the gaussian curve:
+    for i in range(0, resolution, r):
+        x_densities.append(np.trapz(x_vals[i : i + r], x_range[i : i + r]))
+        y_densities.append(np.trapz(y_vals[i : i + r], y_range[i : i + r]))
+        z_densities.append(np.trapz(z_vals[i : i + r], z_range[i : i + r]))
+    # Create grids for x, y and z :
+    xyz_grids = np.meshgrid(x_densities, y_densities, z_densities)
+    # The multiplication here is necessary so that e**x * e**y * e**z are equivalent to
+    # e**(x + y + z)
+    gaussian_frame = xyz_grids[0] * xyz_grids[1] * xyz_grids[2]
+    # Normalize so that values add up to 1:
+    norm_gaussian_frame = gaussian_frame / np.max(gaussian_frame)
+
+    return norm_gaussian_frame
+
+
+def calculate_atom_coord_modifier_within_voxel(
+    atom: ampal.Atom,
+    voxel_edge_length: float,
+    indices: t.Tuple[int, int, int],
+    adjust_by: int = 0,
+) -> t.Tuple[float, float, float]:
+    """
+    Calculates modifiers lost during the discretization of atoms within the voxel.
+
+    Assuming an atom coordinate was x = 2.6, after the discretization it will occupy
+    the voxel center_voxel_x + int(2.6 / 0.57). So assuming center voxel of 10,
+    the atom will occupy x = 10 + 5, though (2.6 / 0.57) is about 4.56.
+
+    This means that our discretization is losing about 5 - 4.56 = 0.44 position.
+    The gaussian representation aims at accounting for this approximation.
+
+    Parameters
+    ----------
+    atom: ampal.Atom
+        Atom x, y, z coordinates will be discretized based on `voxel_edge_length`.
+    voxel_edge_length: float
+        Edge length of the voxels that are mapped onto cartesian space.
+    indices: t.Tuple[int, int, int],
+        Triple containing discretized (x, y, z) coordinates of the atom.
+
+    Returns
+    -------
+    modifiers_triple: t.Tuple[float, float, float]
+        Triple containing modifiers for the (x, y, z) coordinates
+    """
+    # Extract discretized coordinates:
+    dx, dy, dz = indices
+    # Calculate modifiers:
+    modifiers_triple = (
+        dx - (atom.x / voxel_edge_length + adjust_by),
+        dy - (atom.y / voxel_edge_length + adjust_by),
+        dz - (atom.z / voxel_edge_length + adjust_by),
+    )
+
+    return modifiers_triple
+
+
 def add_gaussian_at_position(
     main_matrix: np.ndarray,
     secondary_matrix: np.ndarray,
@@ -385,30 +495,31 @@ def add_gaussian_at_position(
     # This is necessary in case we are at the edge of the frame in which case we
     # need to cut the bits that will not be added.
     density_matrix_slice = secondary_matrix[
-                    max(atomic_center[0] - atom_coord[0], 0) : atomic_center[0]  # min y
-                    - atom_coord[0]
-                    + empty_frame_voxels.shape[0],  # max y
-                    max(atomic_center[1] - atom_coord[1], 0) : atomic_center[1]  # min x
-                    - atom_coord[1]
-                    + empty_frame_voxels.shape[1],  # max x
-                    max(atomic_center[2] - atom_coord[2], 0) : atomic_center[2]  # min z
-                    - atom_coord[2]
-                    + empty_frame_voxels.shape[2],  # max z
-                ]
+        max(atomic_center[0] - atom_coord[0], 0) : atomic_center[0]  # min y
+        - atom_coord[0]
+        + empty_frame_voxels.shape[0],  # max y
+        max(atomic_center[1] - atom_coord[1], 0) : atomic_center[1]  # min x
+        - atom_coord[1]
+        + empty_frame_voxels.shape[1],  # max x
+        max(atomic_center[2] - atom_coord[2], 0) : atomic_center[2]  # min z
+        - atom_coord[2]
+        + empty_frame_voxels.shape[2],  # max z
+    ]
     # Normalize local densities by sum of all densities (so that they all sum up to 1):
     density_matrix_slice /= np.sum(density_matrix_slice)
     # Slice the Frame to select the portion that contains the atom of interest:
     frame_slice = empty_frame_voxels[
-        max(atom_coord[0] - int(density_matrix_slice.shape[0] / 2), 0
-        ) : max(atom_coord[0] - int(density_matrix_slice.shape[0] / 2), 0)
+        max(atom_coord[0] - int(density_matrix_slice.shape[0] / 2), 0) : max(
+            atom_coord[0] - int(density_matrix_slice.shape[0] / 2), 0
+        )
         + density_matrix_slice.shape[0],  # max y
-        max(
+        max(atom_coord[1] - int(density_matrix_slice.shape[1] / 2), 0) : max(
             atom_coord[1] - int(density_matrix_slice.shape[1] / 2), 0
-        ) : max(atom_coord[1] - int(density_matrix_slice.shape[1] / 2), 0)
+        )
         + density_matrix_slice.shape[1],  # max x
-        max(
+        max(atom_coord[2] - int(density_matrix_slice.shape[2] / 2), 0) : max(
             atom_coord[2] - int(density_matrix_slice.shape[2] / 2), 0
-        ) : max(atom_coord[2] - int(density_matrix_slice.shape[2] / 2), 0)
+        )
         + density_matrix_slice.shape[2],  # max z
     ]
     # Add atom density to the frame:
@@ -515,32 +626,42 @@ def create_residue_frame(
             )
         # Encode atoms:
         if voxels_as_gaussian:
+            modifiers_triple = calculate_atom_coord_modifier_within_voxel(
+                atom, voxel_edge_length, indices, adjust_by=voxels_per_side // 2
+            )
             # Get Gaussian encoding
             gaussian_matrix, atom_idx = Codec.encode_gaussian_atom(
-                codec, atom.res_label
+                codec, atom.res_label, modifiers_triple
             )
             gaussian_atom = gaussian_matrix[:, :, :, atom_idx]
             # Add at position:
-            frame = add_gaussian_at_position(main_matrix=frame, secondary_matrix=gaussian_atom, atom_coord=indices, atom_idx=atom_idx)
+            frame = add_gaussian_at_position(
+                main_matrix=frame,
+                secondary_matrix=gaussian_atom,
+                atom_coord=indices,
+                atom_idx=atom_idx,
+            )
         else:
             # Encode atom as voxel:
             frame[indices] = Codec.encode_atom(codec, atom.res_label)
 
     centre = voxels_per_side // 2
-
     # Check whether central atom is C:
     if "CA" in codec.atomic_labels:
         if voxels_as_gaussian:
-            np.testing.assert_array_almost_equal(
-                frame[centre, centre, centre][0], 0.5, decimal=2)
+            np.testing.assert_array_less(
+                frame[centre, centre, centre][4], 1)
+            assert (0 < frame[centre, centre, centre][4] <= 1), f"The central atom value should be between 0 and 1 but was {frame[centre, centre, centre][4]}"
         else:
             assert (
                 frame[centre, centre, centre][4] == 1
             ), f"The central atom should be Carbon, but it is {frame[centre, centre, centre]}."
     else:
         if voxels_as_gaussian:
-            np.testing.assert_array_almost_equal(
-                frame[centre, centre, centre][0], 0.5, decimal= 2)
+            np.testing.assert_array_less(
+                frame[centre, centre, centre][0], 1)
+            assert (0 < frame[centre, centre, centre][0] <= 1), f"The central atom value should be between 0 and 1 but was {frame[centre, centre, centre][0]}"
+
         else:
             assert (
                 frame[centre, centre, centre][0] == 1
@@ -558,7 +679,7 @@ def create_frames_from_structure(
     verbosity: int,
     encode_cb: bool,
     codec: object,
-    voxels_as_gaussian: bool
+    voxels_as_gaussian: bool,
 ) -> t.Tuple[str, ChainDict]:
     """Creates residue frames for each residue in the structure.
 
@@ -635,7 +756,7 @@ def create_frames_from_structure(
                     voxels_per_side=voxels_per_side,
                     encode_cb=encode_cb,
                     codec=codec,
-                    voxels_as_gaussian=voxels_as_gaussian
+                    voxels_as_gaussian=voxels_as_gaussian,
                 )
                 encoded_residue = encode_residue(residue.mol_code)
                 # Save results:
@@ -645,7 +766,7 @@ def create_frames_from_structure(
                         label=residue.mol_code,
                         encoded_residue=encoded_residue,
                         data=array,
-                        voxels_as_gaussian=voxels_as_gaussian
+                        voxels_as_gaussian=voxels_as_gaussian,
                     )
                 )
                 if verbosity > 1:
@@ -778,7 +899,9 @@ def save_results(
                             )
                             continue
                         # Change type of voxel saved to hdf5 file depending on type of voxel used:
-                        voxel_output_type = float if metadata_dict['voxels_as_gaussian'] else bool
+                        voxel_output_type = (
+                            float if metadata_dict["voxels_as_gaussian"] else bool
+                        )
                         res_dataset = chain_group.create_dataset(
                             res_result.residue_id,
                             data=res_result.data,
@@ -888,7 +1011,7 @@ def process_paths(
             atom_filter_fn=str(atom_filter_fn),
             residue_encoder=list(standard_amino_acids.values()),
             frame_edge_length=frame_edge_length,
-            voxels_as_gaussian=voxels_as_gaussian
+            voxels_as_gaussian=voxels_as_gaussian,
         )
         storer = mp.Process(
             target=save_results,
@@ -1078,7 +1201,7 @@ def make_frame_dataset(
     verbosity: int = 1,
     require_confirmation: bool = True,
     encode_cb: bool = True,
-    voxels_as_gaussian: bool = False
+    voxels_as_gaussian: bool = False,
 ) -> pathlib.Path:
     """Creates a dataset of voxelized amino acid frames.
 
