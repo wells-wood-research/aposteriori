@@ -195,6 +195,7 @@ def test_make_frame_dataset():
                     ),
                 )
 
+
 def test_make_frame_dataset_as_gaussian():
     """Tests the creation of a frame data set."""
     test_file = TEST_DATA_DIR / "1ubq.pdb"
@@ -272,26 +273,19 @@ def test_cb_atom_filter(residue_number: int):
 
 def test_add_gaussian_at_position():
     main_matrix = np.zeros((5, 5, 5, 3), dtype=np.float)
-    secondary_matrix = np.array(
-        [[[0.002195, 0.01688, 0.002195],
-          [0.01688, 0.1299, 0.01688],
-          [0.002195, 0.01688, 0.002195]],
+    modifiers_triple = (0, 0, 0)
+    codec = cfds.Codec.CNO()
 
-         [[0.01688, 0.1299, 0.01688],
-          [0.1299, 1., 0.1299],
-          [0.01688, 0.1299, 0.01688]],
-
-         [[0.002195, 0.01688, 0.002195],
-          [0.01688, 0.1299, 0.01688],
-          [0.002195, 0.01688, 0.002195]]])
+    secondary_matrix, atom_idx = codec.encode_gaussian_atom(
+        "C", modifiers_triple
+    )
     atom_coord = (1, 1, 1)
-    atom_idx = 0
 
-    added_matrix = cfds.add_gaussian_at_position(main_matrix, secondary_matrix, atom_coord, atom_idx)
+    added_matrix = cfds.add_gaussian_at_position(main_matrix, secondary_matrix[:,:,:, atom_idx], atom_coord, atom_idx)
     # Check general sum:
     np.testing.assert_array_almost_equal(np.sum(added_matrix), 1.0, decimal=2)
     # Check center:
-    np.testing.assert_array_almost_equal(added_matrix[1, 1, 1, 0], 0.50, decimal=2, err_msg=f"The central atom should be 1 but got {main_matrix[1, 1, 1, 0]}.")
+    assert (0 < added_matrix[1, 1, 1][0] < 1), f"The central atom should be 1 but got {main_matrix[1, 1, 1, 0]}."
     # Check middle points (in each direction so 6 total points):
     # +---+---+---+
     # | _ | X | _ |
@@ -299,47 +293,43 @@ def test_add_gaussian_at_position():
     # | _ | X | _ |
     # +---+---+---+
     # Where 0 is the central atom
-    np.testing.assert_array_almost_equal(added_matrix[0, 1, 1, 0], 0.06495, decimal=2, err_msg=f"The atom should be 0.06495 but got {main_matrix[0, 1, 1, 0]}.")
-    np.testing.assert_array_almost_equal(added_matrix[1, 0, 1, 0], 0.06495, decimal=2, err_msg=f"The atom should be 0.06495 but got {main_matrix[1, 0, 1, 0]}.")
-    np.testing.assert_array_almost_equal(added_matrix[1, 1, 0, 0], 0.06495, decimal=2, err_msg=f"The atom should be 0.06495 but got {main_matrix[1, 1, 0, 0]}.")
-    np.testing.assert_array_almost_equal(added_matrix[1, 1, 2, 0], 0.06495, decimal=2, err_msg=f"The atom should be 0.06495 but got {main_matrix[1, 1, 2, 0]}.")
-    np.testing.assert_array_almost_equal(added_matrix[1, 2, 1, 0], 0.06495, decimal=2, err_msg=f"The atom should be 0.06495 but got {main_matrix[1, 2, 1, 0]}.")
-    np.testing.assert_array_almost_equal(added_matrix[2, 1, 1, 0], 0.06495, decimal=2, err_msg=f"The atom should be 0.06495 but got {main_matrix[2, 1, 1, 0]}.")
+    np.testing.assert_array_almost_equal(added_matrix[1, 0, 1, 0], added_matrix[0, 1, 1, 0], decimal=2, err_msg=f"The atom should be {added_matrix[0, 1, 1, 0]} but got {main_matrix[1, 0, 1, 0]}.")
+    np.testing.assert_array_almost_equal(added_matrix[1, 1, 0, 0], added_matrix[0, 1, 1, 0], decimal=2, err_msg=f"The atom should be {added_matrix[0, 1, 1, 0]} but got {main_matrix[1, 1, 0, 0]}.")
+    np.testing.assert_array_almost_equal(added_matrix[1, 1, 2, 0], added_matrix[0, 1, 1, 0], decimal=2, err_msg=f"The atom should be {added_matrix[0, 1, 1, 0]} but got {main_matrix[1, 1, 2, 0]}.")
+    np.testing.assert_array_almost_equal(added_matrix[1, 2, 1, 0], added_matrix[0, 1, 1, 0], decimal=2, err_msg=f"The atom should be {added_matrix[0, 1, 1, 0]} but got {main_matrix[1, 2, 1, 0]}.")
+    np.testing.assert_array_almost_equal(added_matrix[2, 1, 1, 0], added_matrix[0, 1, 1, 0], decimal=2, err_msg=f"The atom should be {added_matrix[0, 1, 1, 0]} but got {main_matrix[2, 1, 1, 0]}.")
     # Check inner corners (in each direction so 12 total points):
     # +---+---+---+
     # | X | _ | X |
     # | _ | 0 | _ |
     # | X | _ | X |
     # +---+---+---+
-    np.testing.assert_array_almost_equal(added_matrix[0, 0, 1, 0], 0.00844, decimal=4, err_msg=f"The atom should be 0.06495 but got {added_matrix[0, 0, 1, 0]}.")
-    np.testing.assert_array_almost_equal(added_matrix[0, 1, 0, 0], 0.00844, decimal=4, err_msg=f"The atom should be 0.06495 but got {added_matrix[0, 1, 0, 0]}.")
-    np.testing.assert_array_almost_equal(added_matrix[0, 1, 2, 0], 0.00844, decimal=4, err_msg=f"The atom should be 0.06495 but got {added_matrix[0, 1, 2, 0]}.")
-    np.testing.assert_array_almost_equal(added_matrix[0, 2, 1, 0], 0.00844, decimal=4, err_msg=f"The atom should be 0.06495 but got {added_matrix[0, 2, 1, 0]}.")
-    np.testing.assert_array_almost_equal(added_matrix[1, 0, 0, 0], 0.00844, decimal=4, err_msg=f"The atom should be 0.06495 but got {added_matrix[1, 0, 0, 0]}.")
-    np.testing.assert_array_almost_equal(added_matrix[1, 0, 2, 0], 0.00844, decimal=4, err_msg=f"The atom should be 0.06495 but got {added_matrix[1, 0, 2, 0]}.")
-    np.testing.assert_array_almost_equal(added_matrix[1, 2, 0, 0], 0.00844, decimal=4, err_msg=f"The atom should be 0.06495 but got {added_matrix[1, 2, 0, 0]}.")
-    np.testing.assert_array_almost_equal(added_matrix[1, 2, 2, 0], 0.00844, decimal=4, err_msg=f"The atom should be 0.06495 but got {added_matrix[1, 2, 2, 0]}.")
-    np.testing.assert_array_almost_equal(added_matrix[2, 0, 1, 0], 0.00844, decimal=4, err_msg=f"The atom should be 0.06495 but got {added_matrix[2, 0, 1, 0]}.")
-    np.testing.assert_array_almost_equal(added_matrix[2, 1, 0, 0], 0.00844, decimal=4, err_msg=f"The atom should be 0.06495 but got {added_matrix[2, 1, 0, 0]}.")
-    np.testing.assert_array_almost_equal(added_matrix[2, 1, 2, 0], 0.00844, decimal=4, err_msg=f"The atom should be 0.06495 but got {added_matrix[2, 1, 2, 0]}.")
-    np.testing.assert_array_almost_equal(added_matrix[2, 2, 1, 0], 0.00844, decimal=4, err_msg=f"The atom should be 0.06495 but got {added_matrix[2, 2, 1, 0]}.")
-        # Check outer corners(in each direction so 8 total points):
+    np.testing.assert_array_almost_equal(added_matrix[0, 1, 0, 0], added_matrix[0, 0, 1, 0], decimal=4, err_msg=f"The atom should be {added_matrix[0, 0, 1, 0]} but got {added_matrix[0, 1, 0, 0]}.")
+    np.testing.assert_array_almost_equal(added_matrix[0, 1, 2, 0], added_matrix[0, 0, 1, 0], decimal=4, err_msg=f"The atom should be {added_matrix[0, 0, 1, 0]} but got {added_matrix[0, 1, 2, 0]}.")
+    np.testing.assert_array_almost_equal(added_matrix[0, 2, 1, 0], added_matrix[0, 0, 1, 0], decimal=4, err_msg=f"The atom should be {added_matrix[0, 0, 1, 0]} but got {added_matrix[0, 2, 1, 0]}.")
+    np.testing.assert_array_almost_equal(added_matrix[1, 0, 0, 0], added_matrix[0, 0, 1, 0], decimal=4, err_msg=f"The atom should be {added_matrix[0, 0, 1, 0]} but got {added_matrix[1, 0, 0, 0]}.")
+    np.testing.assert_array_almost_equal(added_matrix[1, 0, 2, 0], added_matrix[0, 0, 1, 0], decimal=4, err_msg=f"The atom should be {added_matrix[0, 0, 1, 0]} but got {added_matrix[1, 0, 2, 0]}.")
+    np.testing.assert_array_almost_equal(added_matrix[1, 2, 0, 0], added_matrix[0, 0, 1, 0], decimal=4, err_msg=f"The atom should be {added_matrix[0, 0, 1, 0]} but got {added_matrix[1, 2, 0, 0]}.")
+    np.testing.assert_array_almost_equal(added_matrix[1, 2, 2, 0], added_matrix[0, 0, 1, 0], decimal=4, err_msg=f"The atom should be {added_matrix[0, 0, 1, 0]} but got {added_matrix[1, 2, 2, 0]}.")
+    np.testing.assert_array_almost_equal(added_matrix[2, 0, 1, 0], added_matrix[0, 0, 1, 0], decimal=4, err_msg=f"The atom should be {added_matrix[0, 0, 1, 0]} but got {added_matrix[2, 0, 1, 0]}.")
+    np.testing.assert_array_almost_equal(added_matrix[2, 1, 0, 0], added_matrix[0, 0, 1, 0], decimal=4, err_msg=f"The atom should be {added_matrix[0, 0, 1, 0]} but got {added_matrix[2, 1, 0, 0]}.")
+    np.testing.assert_array_almost_equal(added_matrix[2, 1, 2, 0], added_matrix[0, 0, 1, 0], decimal=4, err_msg=f"The atom should be {added_matrix[0, 0, 1, 0]} but got {added_matrix[2, 1, 2, 0]}.")
+    np.testing.assert_array_almost_equal(added_matrix[2, 2, 1, 0], added_matrix[0, 0, 1, 0], decimal=4, err_msg=f"The atom should be {added_matrix[0, 0, 1, 0]} but got {added_matrix[2, 2, 1, 0]}.")
+    # Check outer corners(in each direction so 8 total points):
     # +---+---+---+
     # | X | _ | X |
     # | _ | _ | _ |
     # | X | _ | X |
     # +---+---+---+
-    np.testing.assert_array_almost_equal(added_matrix[0, 0, 0, 0], 0.0010975, decimal=4, err_msg=f"The atom should be 0.06495 but got {added_matrix[0, 0, 0, 0]}.")
-    np.testing.assert_array_almost_equal(added_matrix[0, 0, 2, 0], 0.0010975, decimal=4, err_msg=f"The atom should be 0.06495 but got {added_matrix[0, 0, 2, 0]}.")
-    np.testing.assert_array_almost_equal(added_matrix[0, 2, 0, 0], 0.0010975, decimal=4, err_msg=f"The atom should be 0.06495 but got {added_matrix[0, 2, 0, 0]}.")
-    np.testing.assert_array_almost_equal(added_matrix[0, 2, 2, 0], 0.0010975, decimal=4, err_msg=f"The atom should be 0.06495 but got {added_matrix[0, 2, 2, 0]}.")
-    np.testing.assert_array_almost_equal(added_matrix[2, 0, 0, 0], 0.0010975, decimal=4, err_msg=f"The atom should be 0.06495 but got {added_matrix[2, 0, 0, 0]}.")
-    np.testing.assert_array_almost_equal(added_matrix[2, 0, 2, 0], 0.0010975, decimal=4, err_msg=f"The atom should be 0.06495 but got {added_matrix[2, 0, 2, 0]}.")
-    np.testing.assert_array_almost_equal(added_matrix[2, 2, 0, 0], 0.0010975, decimal=4, err_msg=f"The atom should be 0.06495 but got {added_matrix[2, 2, 0, 0]}.")
-    np.testing.assert_array_almost_equal(added_matrix[2, 2, 2, 0], 0.0010975, decimal=4, err_msg=f"The atom should be 0.06495 but got {added_matrix[2, 2, 2, 0]}.")
+    np.testing.assert_array_almost_equal(added_matrix[0, 2, 0, 0], added_matrix[0, 0, 2, 0], decimal=4, err_msg=f"The atom should be {added_matrix[0, 0, 2, 0]} but got {added_matrix[0, 2, 0, 0]}.")
+    np.testing.assert_array_almost_equal(added_matrix[0, 2, 2, 0], added_matrix[0, 0, 2, 0], decimal=4, err_msg=f"The atom should be {added_matrix[0, 0, 2, 0]} but got {added_matrix[0, 2, 2, 0]}.")
+    np.testing.assert_array_almost_equal(added_matrix[2, 0, 0, 0], added_matrix[0, 0, 2, 0], decimal=4, err_msg=f"The atom should be {added_matrix[0, 0, 2, 0]} but got {added_matrix[2, 0, 0, 0]}.")
+    np.testing.assert_array_almost_equal(added_matrix[2, 0, 2, 0], added_matrix[0, 0, 2, 0], decimal=4, err_msg=f"The atom should be {added_matrix[0, 0, 2, 0]} but got {added_matrix[2, 0, 2, 0]}.")
+    np.testing.assert_array_almost_equal(added_matrix[2, 2, 0, 0], added_matrix[0, 0, 2, 0], decimal=4, err_msg=f"The atom should be {added_matrix[0, 0, 2, 0]} but got {added_matrix[2, 2, 0, 0]}.")
+    np.testing.assert_array_almost_equal(added_matrix[2, 2, 2, 0], added_matrix[0, 0, 2, 0], decimal=4, err_msg=f"The atom should be {added_matrix[0, 0, 2, 0]} but got {added_matrix[2, 2, 2, 0]}.")
     # Add additional point and check whether the sum is 2:
     atom_coord = (2, 2, 2)
-    added_matrix = cfds.add_gaussian_at_position(added_matrix, secondary_matrix, atom_coord, atom_idx)
+    added_matrix = cfds.add_gaussian_at_position(added_matrix, secondary_matrix[:,:,:, atom_idx], atom_coord, atom_idx)
     np.testing.assert_array_almost_equal(np.sum(added_matrix), 2.0, decimal=2)
     # Add point in top left corner and check whether the normalization still adds up to 1:
     # +---+---+---+
@@ -349,9 +339,11 @@ def test_add_gaussian_at_position():
     # +---+---+---+
     # We are keeping all the X and 0
     atom_coord = (0, 0, 0)
-    added_matrix = cfds.add_gaussian_at_position(main_matrix, secondary_matrix, atom_coord, atom_idx)
+    added_matrix = cfds.add_gaussian_at_position(main_matrix, secondary_matrix[:,:,:, atom_idx], atom_coord, atom_idx)
     np.testing.assert_array_almost_equal(np.sum(added_matrix), 1.0, decimal=2)
-    np.testing.assert_array_almost_equal(added_matrix[0, 0, 0, 0], 0.69322408, decimal=3, err_msg=f"The atom should be 0.06495 but got {added_matrix[0, 0, 0, 0]}.")
+    np.testing.assert_array_less(added_matrix[0, 0, 0][0], 1)
+    assert (0 < added_matrix[0, 0, 0][0] <= 1), f"The central atom value should be between 0 and 1 but was {added_matrix[0, 0, 0][0]}"
+
 
 
 def test_download_pdb_from_csv_file():
