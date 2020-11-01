@@ -340,10 +340,9 @@ def test_add_gaussian_at_position():
     # We are keeping all the X and 0
     atom_coord = (0, 0, 0)
     added_matrix = cfds.add_gaussian_at_position(main_matrix, secondary_matrix[:,:,:, atom_idx], atom_coord, atom_idx)
-    np.testing.assert_array_almost_equal(np.sum(added_matrix), 1.0, decimal=2)
+    np.testing.assert_array_almost_equal(np.sum(added_matrix), 3.0, decimal=2)
     np.testing.assert_array_less(added_matrix[0, 0, 0][0], 1)
     assert (0 < added_matrix[0, 0, 0][0] <= 1), f"The central atom value should be between 0 and 1 but was {added_matrix[0, 0, 0][0]}"
-
 
 
 def test_download_pdb_from_csv_file():
