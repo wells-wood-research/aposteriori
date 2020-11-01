@@ -141,8 +141,8 @@ class Codec:
         """
         Encodes atom as a 3x3 gaussian with length of encoder length. Only the
         C, N and O atoms are represented in gaussian form. If Ca and Cb are
-        encoded separately, they will be represented as a 1 at their respective
-        x,y,z position.
+        encoded separately, they will be represented as a gaussian in their
+        separate channel.
 
         Parameters
         ----------
@@ -482,8 +482,8 @@ def add_gaussian_at_position(
         Frame 4D array with gaussian atom added into it.
     """
 
-    # Deep copy the main matrix:
-    density_frame = copy.deepcopy(main_matrix)
+    # Copy the main matrix:
+    density_frame = main_matrix
 
     # Remember in a 4D matrix, our 4th dimension is the length of the atom_encoder.
     # This means that to obtain a 3D frame we can just select array[:,:,:, ATOM_NUMBER]

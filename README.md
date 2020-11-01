@@ -79,6 +79,7 @@ Usage: make-frame-dataset [OPTIONS] STRUCTURE_FILE_FOLDER
     └─.attrs['atom_filter_fn']: str - Function used to filter the atoms in the frame.
     └─.attrs['residue_encoder']: t.List[str] - Ordered list of residues corresponding to the encoding used.
     └─.attrs['frame_edge_length']: float - Length of the frame in Angstroms (A)
+    └─.attrs['voxels_as_gaussian']: bool - Whether the voxels are encoded as a floating point of a gaussian (True) or boolean (False)
 
   So hdf5['1ctf']['A']['58'] would be an array for the voxelized.
 
@@ -123,7 +124,7 @@ Options:
   -cb, --encode_cb BOOLEAN        Encode the Cb at an average position
                                   (-0.741287356, -0.53937931, -1.224287356) in
                                   the aligned frame, even for Glycine
-                                  residues.
+                                  residues. Default = True
 
   -ae, --atom_encoder [CNO|CNOCB|CNOCBCA]
                                   Encodes atoms in different channels,
@@ -131,6 +132,23 @@ Options:
                                   other options are ´CNOCB´ and `CNOCBCA` to
                                   encode the Cb or Cb and Ca in different
                                   channels respectively.  [required]
+
+  -d, --download_file PATH        Path to csv file with PDB codes to be
+                                  voxelised. The biological assembly will be
+                                  used for download. PDB codes will be
+                                  downloaded the /pdb/ folder.
+
+  -g, --voxels_as_gaussian BOOLEAN
+                                  Boolean - whether to encode voxels as
+                                  gaussians (True) or (Voxels). The gaussian
+                                  representation uses the wanderwaal's radius
+                                  of each atom using the formula e^(-x^2)
+                                  where x is Vx - x)^2 + (Vy - y)^2) + (Vz -
+                                  z)^2)/ r^2 and  (Vx, Vy, Vz) is the position
+                                  of the voxel in space. (x, y, z) is the
+                                  position of the atom in space, r is the Van
+                                  der Waal’s radius of the atom. They are then
+                                  normalized to add up to 1.
 
   --help                          Show this message and exit.
 
@@ -156,7 +174,7 @@ Once the dataset is downloaded, you will have a directory with sub-directory
 To voxelize the structures into frames, run:
 
 ```sh
-make-frame-dataset -vrz /path/to/biounits/  -e .pdb1.gz 
+make-frame-dataset /path/to/biounits/  -e .pdb1.gz 
 ```
   
 If everything went well, you should be seeing the number of structures that
@@ -173,7 +191,7 @@ PISCES (Protein Sequence Culling Server) is a curated subset of protein
 Aposteriori supports filtering with a PISCES file as such:
  
 ```sh
-make-frame-dataset -vrz /path/to/biounits/  -e .pdb1.gz --pieces-filter-file
+make-frame-dataset /path/to/biounits/  -e .pdb1.gz --pieces-filter-file
  path/to/pisces/cullpdb_pc90_res1.6_R0.25_d190114_chains8082
 ```
   

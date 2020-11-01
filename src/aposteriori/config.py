@@ -1,7 +1,6 @@
 import pathlib
 
 from ampal.data import ELEMENT_DATA
-import numpy as np
 
 # Config paths
 MAKE_FRAME_DATASET_VER = "1.0.0"
