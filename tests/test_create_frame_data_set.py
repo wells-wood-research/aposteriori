@@ -272,9 +272,9 @@ def test_cb_atom_filter(residue_number: int):
 
 
 def test_add_gaussian_at_position():
-    main_matrix = np.zeros((5, 5, 5, 3), dtype=np.float)
+    main_matrix = np.zeros((5, 5, 5, 5), dtype=np.float)
     modifiers_triple = (0, 0, 0)
-    codec = cfds.Codec.CNO()
+    codec = cfds.Codec.CNOCBCA()
 
     secondary_matrix, atom_idx = codec.encode_gaussian_atom(
         "C", modifiers_triple
@@ -343,6 +343,35 @@ def test_add_gaussian_at_position():
     np.testing.assert_array_almost_equal(np.sum(added_matrix), 3.0, decimal=2)
     np.testing.assert_array_less(added_matrix[0, 0, 0][0], 1)
     assert (0 < added_matrix[0, 0, 0][0] <= 1), f"The central atom value should be between 0 and 1 but was {added_matrix[0, 0, 0][0]}"
+    # Testing N, O, Ca, Cb atom channels. Adding atoms at (0, 0, 0) in different channels:
+    N_secondary_matrix, N_atom_idx = codec.encode_gaussian_atom(
+        "N", modifiers_triple
+    )
+    added_matrix = cfds.add_gaussian_at_position(main_matrix, N_secondary_matrix[:,:,:, N_atom_idx], atom_coord, N_atom_idx)
+    np.testing.assert_array_almost_equal(np.sum(added_matrix), 4.0, decimal=2)
+    np.testing.assert_array_less(added_matrix[0, 0, 0][N_atom_idx], 1)
+    assert (0 < added_matrix[0, 0, 0][N_atom_idx] <= 1), f"The central atom value should be between 0 and 1 but was {added_matrix[0, 0, 0][N_atom_idx]}"
+    O_secondary_matrix, O_atom_idx = codec.encode_gaussian_atom(
+        "O", modifiers_triple
+    )
+    added_matrix = cfds.add_gaussian_at_position(main_matrix, O_secondary_matrix[:,:,:, O_atom_idx], atom_coord, O_atom_idx)
+    np.testing.assert_array_almost_equal(np.sum(added_matrix), 5.0, decimal=2)
+    np.testing.assert_array_less(added_matrix[0, 0, 0][O_atom_idx], 1)
+    assert (0 < added_matrix[0, 0, 0][O_atom_idx] <= 1), f"The central atom value should be between 0 and 1 but was {added_matrix[0, 0, 0][O_atom_idx]}"
+    CA_secondary_matrix, CA_atom_idx = codec.encode_gaussian_atom(
+        "CA", modifiers_triple
+    )
+    added_matrix = cfds.add_gaussian_at_position(main_matrix, CA_secondary_matrix[:,:,:, CA_atom_idx], atom_coord, CA_atom_idx)
+    np.testing.assert_array_almost_equal(np.sum(added_matrix), 6.0, decimal=2)
+    np.testing.assert_array_less(added_matrix[0, 0, 0][CA_atom_idx], 1)
+    assert (0 < added_matrix[0, 0, 0][CA_atom_idx] <= 1), f"The central atom value should be between 0 and 1 but was {added_matrix[0, 0, 0][CA_atom_idx]}"
+    CB_secondary_matrix, CB_atom_idx = codec.encode_gaussian_atom(
+        "CB", modifiers_triple
+    )
+    added_matrix = cfds.add_gaussian_at_position(main_matrix, CB_secondary_matrix[:,:,:, CB_atom_idx], atom_coord, CB_atom_idx)
+    np.testing.assert_array_almost_equal(np.sum(added_matrix), 7.0, decimal=2)
+    np.testing.assert_array_less(added_matrix[0, 0, 0][CB_atom_idx], 1)
+    assert (0 < added_matrix[0, 0, 0][CB_atom_idx] <= 1), f"The central atom value should be between 0 and 1 but was {CB_atom_idx[0, 0, 0][CA_atom_idx]}"
 
 
 def test_download_pdb_from_csv_file():
