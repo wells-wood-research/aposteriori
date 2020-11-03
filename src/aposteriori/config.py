@@ -15,7 +15,7 @@ ATOM_COLORS = {
     3: "orange",  # +1
     4: "green"  # +2
 }
-ATOM_WANDERWAAL_RADII = {
+ATOM_VANDERWAAL_RADII = {
     # Atomic number : Radius
     0: 0.7,  # Carbon
     1: 0.65,  # Nitrogen

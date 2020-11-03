@@ -3,7 +3,6 @@
 In this type of dataset, all individual entries are stored separately in a flat
 structure.
 """
-import copy
 import csv
 import glob
 import gzip
@@ -24,7 +23,7 @@ import numpy as np
 from ampal.amino_acids import standard_amino_acids
 from aposteriori.config import (
     ATOMIC_CENTER,
-    ATOM_WANDERWAAL_RADII,
+    ATOM_VANDERWAAL_RADII,
     MAKE_FRAME_DATASET_VER,
     PDB_PATH,
     PDB_REQUEST_URL,
@@ -121,7 +120,7 @@ class Codec:
         # Creating empty atom encoding:
         encoded_atom = np.zeros(self.encoder_length, dtype=bool)
         # Attempt encoding:
-        if atom_label in set(self.label_to_encoding.keys()):
+        if atom_label in self.label_to_encoding.keys():
             atom_idx = self.label_to_encoding[atom_label]
             encoded_atom[atom_idx] = True
         # Encode CA as C in case it is not in the labels:
@@ -161,7 +160,7 @@ class Codec:
         # Creating empty atom encoding:
         encoded_atom = np.zeros((3, 3, 3, self.encoder_length))
         # Attempt encoding:
-        if atom_label.upper() in set(self.label_to_encoding.keys()):
+        if atom_label.upper() in self.label_to_encoding.keys():
             atom_idx = self.label_to_encoding[atom_label.upper()]
         # Fix labels:
         elif self.encoder_length == 3:
@@ -175,30 +174,29 @@ class Codec:
                 atom_label = "C"
                 atom_idx = self.label_to_encoding[atom_label]
         else:
-            warnings.warn(
+            raise ValueError(
                 f"{atom_label} not found in {self.atomic_labels} encoding. Returning empty array."
             )
         # If label to encode is C, N, O:
-        if atom_idx in set(ATOM_WANDERWAAL_RADII.keys()):
+        if atom_idx in ATOM_VANDERWAAL_RADII.keys():
             # Get encoding:
-            atomic_radius = ATOM_WANDERWAAL_RADII[atom_idx]
+            atomic_radius = ATOM_VANDERWAAL_RADII[atom_idx]
             atom_to_encode = convert_atom_to_gaussian_density(
                 modifiers_triple, atomic_radius
             )
             # Add to original atom:
             encoded_atom[:, :, :, atom_idx] += atom_to_encode
         # If label encodes Cb and Ca as separate channels (ie, not CNO):
-        elif atom_label.upper() in set(self.label_to_encoding.keys()):
+        elif atom_label.upper() in self.label_to_encoding.keys():
             # Get encoding:
-            atomic_radius = ATOM_WANDERWAAL_RADII[0]
+            atomic_radius = ATOM_VANDERWAAL_RADII[0]
             atom_to_encode = convert_atom_to_gaussian_density(
                 modifiers_triple, atomic_radius
             )
             encoded_atom[:, :, :, atom_idx] += atom_to_encode
         else:
-            warnings.warn(
-                f"{atom_label} not found in {self.atomic_labels} encoding. Returning empty array."
-            )
+            raise ValueError(f"{atom_label} not found in {self.atomic_labels} encoding. Returning empty array.")
+
         return encoded_atom, atom_idx
 
     def decode_atom(self, encoded_atom: np.ndarray) -> t.Optional[str]:
@@ -361,7 +359,10 @@ def convert_atom_to_gaussian_density(
 ):
     """
     Converts an atom at a coordinate, with specific modifiers due to a discretization,
-    into a 3x3x3 gaussian.
+    into a 3x3x3 gaussian density using the formula. We use the formula indicated
+    by Zhang et al., (2019) ProdCoNN.
+
+    https://onlinelibrary.wiley.com/action/downloadSupplement?doi=10.1002%2Fprot.25868&file=prot25868-sup-0001-AppendixS1.pdf
 
     Parameters
     ----------
@@ -382,12 +383,12 @@ def convert_atom_to_gaussian_density(
     # Unpack x, y, z:
     x, y, z = modifiers_triple
     # Obtain x, y, z ranges for the gaussian
-    x_range = y_range = z_range = np.linspace(-range_val, range_val, resolution)
+    gaussian_range = np.linspace(-range_val, range_val, resolution)
     # Calculate density for each axis at each point
     x_vals, y_vals, z_vals = (
-        np.exp(-1 * ((x_range - x) / wanderwaal_radius) ** 2, dtype=np.float16),
-        np.exp(-1 * ((y_range - y) / wanderwaal_radius) ** 2, dtype=np.float16),
-        np.exp(-1 * ((z_range - z) / wanderwaal_radius) ** 2, dtype=np.float16),
+        np.exp(-1 * ((gaussian_range - x) / wanderwaal_radius) ** 2, dtype=np.float16),
+        np.exp(-1 * ((gaussian_range - y) / wanderwaal_radius) ** 2, dtype=np.float16),
+        np.exp(-1 * ((gaussian_range - z) / wanderwaal_radius) ** 2, dtype=np.float16),
     )
 
     x_densities = []
@@ -396,9 +397,9 @@ def convert_atom_to_gaussian_density(
     r = resolution // 3
     # Integrate to get area under the gaussian curve:
     for i in range(0, resolution, r):
-        x_densities.append(np.trapz(x_vals[i : i + r], x_range[i : i + r]))
-        y_densities.append(np.trapz(y_vals[i : i + r], y_range[i : i + r]))
-        z_densities.append(np.trapz(z_vals[i : i + r], z_range[i : i + r]))
+        x_densities.append(np.trapz(x_vals[i : i + r], gaussian_range[i : i + r]))
+        y_densities.append(np.trapz(y_vals[i : i + r], gaussian_range[i : i + r]))
+        z_densities.append(np.trapz(z_vals[i : i + r], gaussian_range[i : i + r]))
     # Create grids for x, y and z :
     xyz_grids = np.meshgrid(x_densities, y_densities, z_densities)
     # The multiplication here is necessary so that e**x * e**y * e**z are equivalent to
@@ -649,18 +650,20 @@ def create_residue_frame(
     # Check whether central atom is C:
     if "CA" in codec.atomic_labels:
         if voxels_as_gaussian:
-            np.testing.assert_array_less(
-                frame[centre, centre, centre][4], 1)
-            assert (0 < frame[centre, centre, centre][4] <= 1), f"The central atom value should be between 0 and 1 but was {frame[centre, centre, centre][4]}"
+            np.testing.assert_array_less(frame[centre, centre, centre][4], 1)
+            assert (
+                0 < frame[centre, centre, centre][4] <= 1
+            ), f"The central atom value should be between 0 and 1 but was {frame[centre, centre, centre][4]}"
         else:
             assert (
                 frame[centre, centre, centre][4] == 1
             ), f"The central atom should be Carbon, but it is {frame[centre, centre, centre]}."
     else:
         if voxels_as_gaussian:
-            np.testing.assert_array_less(
-                frame[centre, centre, centre][0], 1)
-            assert (0 < frame[centre, centre, centre][0] <= 1), f"The central atom value should be between 0 and 1 but was {frame[centre, centre, centre][0]}"
+            np.testing.assert_array_less(frame[centre, centre, centre][0], 1)
+            assert (
+                0 < frame[centre, centre, centre][0] <= 1
+            ), f"The central atom value should be between 0 and 1 but was {frame[centre, centre, centre][0]}"
 
         else:
             assert (
