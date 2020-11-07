@@ -354,8 +354,9 @@ def encode_residue(residue: str) -> np.ndarray:
 def convert_atom_to_gaussian_density(
     modifiers_triple: t.Tuple[float, float, float],
     wanderwaal_radius: float,
-    range_val: int = 2,
+    range_val: int = 1.9662466246624664,
     resolution: int = 99,
+    optimized: bool = True,
 ):
     """
     Converts an atom at a coordinate, with specific modifiers due to a discretization,
@@ -380,33 +381,51 @@ def convert_atom_to_gaussian_density(
     norm_gaussian_frame: np.ndarray
         3x3x3 Frame encoding for a gaussian atom
     """
-    # Unpack x, y, z:
-    x, y, z = modifiers_triple
-    # Obtain x, y, z ranges for the gaussian
-    gaussian_range = np.linspace(-range_val, range_val, resolution)
-    # Calculate density for each axis at each point
-    x_vals, y_vals, z_vals = (
-        np.exp(-1 * ((gaussian_range - x) / wanderwaal_radius) ** 2, dtype=np.float16),
-        np.exp(-1 * ((gaussian_range - y) / wanderwaal_radius) ** 2, dtype=np.float16),
-        np.exp(-1 * ((gaussian_range - z) / wanderwaal_radius) ** 2, dtype=np.float16),
-    )
+    if optimized:
+        # Unpack x, y, z:
+        x, y, z = modifiers_triple
+        # Obtain x, y, z ranges for the gaussian
+        gaussian_range = np.linspace(-range_val, range_val, resolution)
+        # Calculate density for each axis at each point
+        x_vals, y_vals, z_vals = (
+            np.exp(-1 * ((gaussian_range - x) / wanderwaal_radius) ** 2, dtype=np.float16),
+            np.exp(-1 * ((gaussian_range - y) / wanderwaal_radius) ** 2, dtype=np.float16),
+            np.exp(-1 * ((gaussian_range - z) / wanderwaal_radius) ** 2, dtype=np.float16),
+        )
 
-    x_densities = []
-    y_densities = []
-    z_densities = []
-    r = resolution // 3
-    # Integrate to get area under the gaussian curve:
-    for i in range(0, resolution, r):
-        x_densities.append(np.trapz(x_vals[i : i + r], gaussian_range[i : i + r]))
-        y_densities.append(np.trapz(y_vals[i : i + r], gaussian_range[i : i + r]))
-        z_densities.append(np.trapz(z_vals[i : i + r], gaussian_range[i : i + r]))
-    # Create grids for x, y and z :
-    xyz_grids = np.meshgrid(x_densities, y_densities, z_densities)
-    # The multiplication here is necessary so that e**x * e**y * e**z are equivalent to
-    # e**(x + y + z)
-    gaussian_frame = xyz_grids[0] * xyz_grids[1] * xyz_grids[2]
+        x_densities = []
+        y_densities = []
+        z_densities = []
+        r = resolution // 3
+        # Integrate to get area under the gaussian curve:
+        for i in range(0, resolution, r):
+            x_densities.append(np.trapz(x_vals[i : i + r], gaussian_range[i : i + r]))
+            y_densities.append(np.trapz(y_vals[i : i + r], gaussian_range[i : i + r]))
+            z_densities.append(np.trapz(z_vals[i : i + r], gaussian_range[i : i + r]))
+        # Create grids for x, y and z :
+        xyz_grids = np.meshgrid(x_densities, y_densities, z_densities)
+        # The multiplication here is necessary so that e**x * e**y * e**z are equivalent to
+        # e**(x + y + z)
+        gaussian_frame = xyz_grids[0] * xyz_grids[1] * xyz_grids[2]
+
+    else:
+        gaussian_frame = np.zeros((3, 3, 3), dtype=float)
+        xyz_coordinates = np.where(gaussian_frame == 0)
+        # Identify the real (undiscretized) coordinates of the atom in the 3x3x3 matrix
+        x, y, z = modifiers_triple
+        x, y, z = x+1, y+1, z+1
+
+        # The transpose changes arrays of [x], [y], [z] into [x, y, z]
+        for voxel_coord in np.array(xyz_coordinates).T:
+            # Extract voxel coords:
+            vx, vy, vz = voxel_coord
+            # Calculate Density:
+            voxel_density = np.exp(-((vx-x)**2 + (vy-y)**2 + (vz-z)**2)/wanderwaal_radius**2)
+            # Add density to frame:
+            gaussian_frame[vx, vy, vz] = voxel_density
+
     # Normalize so that values add up to 1:
-    norm_gaussian_frame = gaussian_frame / np.max(gaussian_frame)
+    norm_gaussian_frame = gaussian_frame / np.sum(gaussian_frame)
 
     return norm_gaussian_frame
 
