@@ -415,14 +415,14 @@ def convert_atom_to_gaussian_density(
         x, y, z = modifiers_triple
         x, y, z = x+1, y+1, z+1
 
-        # The transpose changes arrays of [x], [y], [z] into [x, y, z]
+        # The transpose changes arrays of [y], [x], [z] into [y, x, z]
         for voxel_coord in np.array(xyz_coordinates).T:
             # Extract voxel coords:
-            vx, vy, vz = voxel_coord
+            vy, vx, vz = voxel_coord
             # Calculate Density:
             voxel_density = np.exp(-((vx-x)**2 + (vy-y)**2 + (vz-z)**2)/wanderwaal_radius**2)
             # Add density to frame:
-            gaussian_frame[vx, vy, vz] = voxel_density
+            gaussian_frame[vy, vx, vz] = voxel_density
 
     # Normalize so that values add up to 1:
     norm_gaussian_frame = gaussian_frame / np.sum(gaussian_frame)
