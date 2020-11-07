@@ -200,8 +200,8 @@ def test_convert_atom_to_gaussian_density():
     # No modifiers:
     opt_frame = cfds.convert_atom_to_gaussian_density((0,0,0), 0.6, optimized=True)
     non_opt_frame = cfds.convert_atom_to_gaussian_density((0,0,0), 0.6, optimized=False)
-    np.testing.assert_array_almost_equal(opt_frame, non_opt_frame, decimal=5, error_msg="Both frames should have the same value")
-    np.testing.assert_almost_equal(np.sum(non_opt_frame), np.sum(opt_frame), error_msg="Both frames should sum up to 1")
+    np.testing.assert_array_almost_equal(opt_frame, non_opt_frame, decimal=5)
+    np.testing.assert_almost_equal(np.sum(non_opt_frame), np.sum(opt_frame))
     # With modifiers:
     opt_frame = cfds.convert_atom_to_gaussian_density((0.5, 0, 0), 0.6, optimized=True)
     non_opt_frame = cfds.convert_atom_to_gaussian_density((0.5, 0, 0), 0.6, optimized=False)
