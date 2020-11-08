@@ -354,8 +354,8 @@ def encode_residue(residue: str) -> np.ndarray:
 def convert_atom_to_gaussian_density(
     modifiers_triple: t.Tuple[float, float, float],
     wanderwaal_radius: float,
-    range_val: int = 1.9662466246624664,
-    resolution: int = 99,
+    range_val: int = 2,
+    resolution: int = 999,
     optimized: bool = True,
 ):
     """
@@ -385,12 +385,14 @@ def convert_atom_to_gaussian_density(
         # Unpack x, y, z:
         x, y, z = modifiers_triple
         # Obtain x, y, z ranges for the gaussian
-        gaussian_range = np.linspace(-range_val, range_val, resolution)
+        x_range = np.linspace(-range_val+x, range_val-x, resolution)
+        y_range = np.linspace(-range_val+y, range_val-y, resolution)
+        z_range = np.linspace(-range_val+z, range_val-z, resolution)
         # Calculate density for each axis at each point
         x_vals, y_vals, z_vals = (
-            np.exp(-1 * ((gaussian_range - x) / wanderwaal_radius) ** 2, dtype=np.float16),
-            np.exp(-1 * ((gaussian_range - y) / wanderwaal_radius) ** 2, dtype=np.float16),
-            np.exp(-1 * ((gaussian_range - z) / wanderwaal_radius) ** 2, dtype=np.float16),
+            np.exp(-1 * ((x_range - x) / wanderwaal_radius) ** 2, dtype=np.float16),
+            np.exp(-1 * ((y_range - y) / wanderwaal_radius) ** 2, dtype=np.float16),
+            np.exp(-1 * ((z_range - z) / wanderwaal_radius) ** 2, dtype=np.float16),
         )
 
         x_densities = []
@@ -399,10 +401,10 @@ def convert_atom_to_gaussian_density(
         r = resolution // 3
         # Integrate to get area under the gaussian curve:
         for i in range(0, resolution, r):
-            x_densities.append(np.trapz(x_vals[i : i + r], gaussian_range[i : i + r]))
-            y_densities.append(np.trapz(y_vals[i : i + r], gaussian_range[i : i + r]))
-            z_densities.append(np.trapz(z_vals[i : i + r], gaussian_range[i : i + r]))
-        # Create grids for x, y and z :
+            x_densities.append(np.trapz(x_vals[i : i + r], x_range[i : i + r]))
+            y_densities.append(np.trapz(y_vals[i : i + r], y_range[i : i + r]))
+            z_densities.append(np.trapz(z_vals[i : i + r], z_range[i : i + r]))
+        # # Create grids for x, y and z :
         xyz_grids = np.meshgrid(x_densities, y_densities, z_densities)
         # The multiplication here is necessary so that e**x * e**y * e**z are equivalent to
         # e**(x + y + z)
@@ -414,7 +416,6 @@ def convert_atom_to_gaussian_density(
         # Identify the real (undiscretized) coordinates of the atom in the 3x3x3 matrix
         x, y, z = modifiers_triple
         x, y, z = x+1, y+1, z+1
-
         # The transpose changes arrays of [y], [x], [z] into [y, x, z]
         for voxel_coord in np.array(xyz_coordinates).T:
             # Extract voxel coords:
