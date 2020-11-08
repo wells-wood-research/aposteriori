@@ -200,12 +200,88 @@ def test_convert_atom_to_gaussian_density():
     # No modifiers:
     opt_frame = cfds.convert_atom_to_gaussian_density((0,0,0), 0.6, optimized=True)
     non_opt_frame = cfds.convert_atom_to_gaussian_density((0,0,0), 0.6, optimized=False)
-    np.testing.assert_array_almost_equal(opt_frame, non_opt_frame, decimal=5)
+    np.testing.assert_array_almost_equal(opt_frame, non_opt_frame, decimal=2)
     np.testing.assert_almost_equal(np.sum(non_opt_frame), np.sum(opt_frame))
     # With modifiers:
     opt_frame = cfds.convert_atom_to_gaussian_density((0.5, 0, 0), 0.6, optimized=True)
     non_opt_frame = cfds.convert_atom_to_gaussian_density((0.5, 0, 0), 0.6, optimized=False)
     np.testing.assert_array_almost_equal(opt_frame, non_opt_frame, decimal=2)
+
+
+def test_make_frame_dataset_as_gaussian():
+    """Tests the creation of a frame data set."""
+    test_file = TEST_DATA_DIR / "1ubq.pdb"
+    frame_edge_length = 18.0
+    voxels_per_side = 31
+
+    ampal_1ubq = ampal.load_pdb(str(test_file))
+    for atom in ampal_1ubq.get_atoms():
+        if not cfds.default_atom_filter(atom):
+            del atom.parent.atoms[atom.res_label]
+            del atom
+    with tempfile.TemporaryDirectory() as tmpdir:
+        # Obtain atom encoder:
+        codec = cfds.Codec.CNO()
+        output_file_path = cfds.make_frame_dataset(
+            structure_files=[test_file],
+            output_folder=tmpdir,
+            name="test_dataset",
+            frame_edge_length=frame_edge_length,
+            voxels_per_side=voxels_per_side,
+            verbosity=1,
+            require_confirmation=False,
+            codec=codec,
+            voxels_as_gaussian=True,
+        )
+        with h5py.File(output_file_path, "r") as dataset:
+            for n in range(1, 77):
+                # check that the frame for all the data frames match between the input
+                # arrays and the ones that come out of the HDF5 data set
+                residue_number = str(n)
+                test_frame = cfds.create_residue_frame(
+                    residue=ampal_1ubq["A"][residue_number],
+                    frame_edge_length=frame_edge_length,
+                    voxels_per_side=voxels_per_side,
+                    encode_cb=False,
+                    codec=codec,
+                    voxels_as_gaussian=True,
+                )
+                hdf5_array = dataset["1ubq"]["A"][residue_number][()]
+                npt.assert_array_equal(
+                    hdf5_array,
+                    test_frame,
+                    err_msg=(
+                        "The frame in the HDF5 data set should be the same as the "
+                        "input frame."
+                    ),
+                )
+
+
+@settings(deadline=700)
+@given(integers(min_value=0, max_value=214))
+def test_default_atom_filter(residue_number: int):
+    assembly = ampal.load_pdb(str(TEST_DATA_DIR / "3qy1.pdb"))
+    focus_residue = assembly[0][residue_number]
+    backbone_atoms = ("N", "CA", "C", "O")
+
+    for atom in focus_residue:
+        filtered_atom = True if atom.res_label in backbone_atoms else False
+        filtered_scenario = cfds.default_atom_filter(atom)
+        assert filtered_atom == filtered_scenario, f"Expected {atom.res_label} to return {filtered_atom} after filter"
+
+
+@settings(deadline=700)
+@given(integers(min_value=0, max_value=214))
+def test_cb_atom_filter(residue_number: int):
+    assembly = ampal.load_pdb(str(TEST_DATA_DIR / "3qy1.pdb"))
+    focus_residue = assembly[0][residue_number]
+    backbone_atoms = ("N", "CA", "C", "O", "CB")
+
+    for atom in focus_residue:
+        filtered_atom = True if atom.res_label in backbone_atoms else False
+        filtered_scenario = cfds.keep_sidechain_cb_atom_filter(atom)
+        assert filtered_atom == filtered_scenario, f"Expected {atom.res_label} to return {filtered_atom} after filter"
+
 
 
 def test_make_frame_dataset_as_gaussian():
