@@ -22,7 +22,6 @@ import numpy as np
 
 from ampal.amino_acids import standard_amino_acids
 from aposteriori.config import (
-    ATOMIC_CENTER,
     ATOM_VANDERWAAL_RADII,
     MAKE_FRAME_DATASET_VER,
     PDB_PATH,
@@ -175,7 +174,7 @@ class Codec:
                 atom_idx = self.label_to_encoding[atom_label]
         else:
             raise ValueError(
-                f"{atom_label} not found in {self.atomic_labels} encoding. Returning empty array."
+                f"{atom_label} not found in {self.atomic_labels} encoding."
             )
         # If label to encode is C, N, O:
         if atom_idx in ATOM_VANDERWAAL_RADII.keys():
@@ -360,8 +359,7 @@ def convert_atom_to_gaussian_density(
 ):
     """
     Converts an atom at a coordinate, with specific modifiers due to a discretization,
-    into a 3x3x3 gaussian density using the formula. We use the formula indicated
-    by Zhang et al., (2019) ProdCoNN.
+    into a 3x3x3 gaussian density using the formula indicated  by Zhang et al., (2019) ProdCoNN.
 
     https://onlinelibrary.wiley.com/action/downloadSupplement?doi=10.1002%2Fprot.25868&file=prot25868-sup-0001-AppendixS1.pdf
 
@@ -374,8 +372,9 @@ def convert_atom_to_gaussian_density(
     range_val: int
         Range values for the gaussian. Default = 2
     resolution: int
-        Number of points selected between the `range_val` to calculate the density. Default = 99
-
+        Number of points selected between the `range_val` to calculate the density. Default = 999
+    optimized: bool
+        Whether to use an optimized algorithm to produce the gaussian. Default = True
     Returns
     -------
     norm_gaussian_frame: np.ndarray
@@ -478,7 +477,7 @@ def add_gaussian_at_position(
     secondary_matrix: np.ndarray,
     atom_coord: t.Tuple[int, int, int],
     atom_idx: int,
-    atomic_center: t.Tuple[int, int, int] = ATOMIC_CENTER,
+    atomic_center: t.Tuple[int, int, int] = (1, 1, 1),
 ) -> np.ndarray:
     """
     Adds a 3D array (of a gaussian atom) to a specific coordinate of a frame.
@@ -1262,7 +1261,12 @@ def make_frame_dataset(
     encode_cb: bool
         Whether to encode the Cb at an average position in the frame.
     voxels_as_gaussian: bool
-        Whether to encode voxels as gaussians.
+        Whether the voxels are encoded as a floating point of a gaussian (True) or boolean (False).
+        This converts an atom at a coordinate, with specific modifiers due to discretization,
+        into a 3x3x3 gaussian density using the formula indicated by Zhang et al., (2019) ProdCoNN.
+
+        https://onlinelibrary.wiley.com/action/downloadSupplement?doi=10.1002%2Fprot.25868&file=prot25868-sup-0001-AppendixS1.pdf
+
 
     Returns
     -------
