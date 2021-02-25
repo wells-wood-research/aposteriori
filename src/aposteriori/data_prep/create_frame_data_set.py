@@ -1201,8 +1201,12 @@ def filter_structures_by_blacklist(
     # Open blacklist file and extract list:
     with open(blacklist_csv_file) as csv_file:
         blacklist_csv = csv.reader(csv_file, delimiter=",")
+        blacklist = set()
         # Reading to set to make sure entries are unique:
-        blacklist = set([b_pdb.strip(" ").lower() for b_pdb in next(blacklist_csv)])
+        for b_pdb in next(blacklist_csv):
+            curr_pdb = b_pdb.strip(" ").lower()
+            assert len(curr_pdb) == 4 or len(curr_pdb) == 5, f"Expected PDB to be length of 4 or 5 but found {len(curr_pdb)}"
+            blacklist.add(curr_pdb)
 
     filtered_structure_files = []
     # Loop through structures
@@ -1276,6 +1280,7 @@ def make_frame_dataset(
     require_confirmation: bool = True,
     encode_cb: bool = True,
     voxels_as_gaussian: bool = False,
+    blacklist_csv: pathlib.Path = None,
 ) -> pathlib.Path:
     """Creates a dataset of voxelized amino acid frames.
 
@@ -1318,13 +1323,22 @@ def make_frame_dataset(
         into a 3x3x3 gaussian density using the formula indicated by Zhang et al., (2019) ProdCoNN.
 
         https://onlinelibrary.wiley.com/action/downloadSupplement?doi=10.1002%2Fprot.25868&file=prot25868-sup-0001-AppendixS1.pdf
-
+    blacklist_csv: StrOrPath
+        Path to blacklist csv file.
 
     Returns
     -------
     output_file_path: pathlib.Path
         A path to the location of the output dataset.
     """
+    # Filter by blacklist:
+    if blacklist_csv and pathlib.Path(blacklist_csv).exists():
+        structure_files = filter_structures_by_blacklist(
+            structure_files, pathlib.Path(blacklist_csv)
+        )
+    elif blacklist_csv and pathlib.Path(blacklist_csv).exists() == False:
+        raise InputError(f"Blacklist Path {blacklist_csv} not found.")
+
     chain_filter_dict: t.Optional[t.Dict[str, t.List[str]]]
 
     assert len(structure_files) > 0, "Aborting, no structure files defined."
