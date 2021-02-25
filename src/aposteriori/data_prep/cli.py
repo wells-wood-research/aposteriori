@@ -139,7 +139,7 @@ from aposteriori.data_prep.create_frame_data_set import (
 )
 @click.option(
     "-b",
-    "--blacklist",
+    "--blacklist_csv",
     type=click.Path(exists=True, readable=True),
     help=("Path to csv file with structures to be removed."),
 )

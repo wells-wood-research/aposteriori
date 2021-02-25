@@ -1079,7 +1079,9 @@ def process_paths(
     return
 
 
-def _select_pdb_chain(pdb_path: pathlib.Path, chain: str):
+def _select_pdb_chain(
+    pdb_path: pathlib.Path, chain: str
+) -> (ampal.Assembly, pathlib.Path):
     """
     Select a chain from a pdb file. The chain will remove the original pdb file.
     At the moment we only support the selection of one chain at the time, meaning
@@ -1096,6 +1098,8 @@ def _select_pdb_chain(pdb_path: pathlib.Path, chain: str):
     -------
     chain_pdb: ampal.Assembly
         Ampal object with the selected chain
+    output_pdb_path: pathlib.Path
+        Output path with chain
     """
     pdb_structure = ampal.load_pdb(pdb_path)
     # Check if PDB structure is container and select assembly
@@ -1118,7 +1122,7 @@ def _select_pdb_chain(pdb_path: pathlib.Path, chain: str):
     # Delete original file
     if pdb_path.exists():
         pdb_path.unlink()
-    return chain_pdb
+    return chain_pdb, output_pdb_path
 
 
 def _fetch_pdb(
@@ -1170,7 +1174,7 @@ def _fetch_pdb(
     if len(pdb_code) == 5:
         # Extract chain from string:
         chain = pdb_code[-1]
-        _ = _select_pdb_chain(output_path, chain)
+        _, output_path = _select_pdb_chain(output_path, chain)
 
     return output_path
 
@@ -1204,7 +1208,6 @@ def filter_structures_by_blacklist(
     # Loop through structures
     for structure in structure_files:
         curr_pdb = str(structure.stem).lower()
-        print(curr_pdb)
         # if pdb not in blacklist
         if curr_pdb not in blacklist:
             # keep it:

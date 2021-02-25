@@ -463,8 +463,8 @@ def test_add_gaussian_at_position():
 
 
 def test_download_pdb_from_csv_file():
-    blacklist_csv = Path("tests/testing_files/csv_pdb_list/pdb_to_filter.csv")
-    test_file_paths = cfds.download_pdb_from_csv_file(blacklist_csv, TEST_DATA_DIR)
+    download_csv = Path("tests/testing_files/csv_pdb_list/pdb_to_test.csv")
+    test_file_paths = cfds.download_pdb_from_csv_file(download_csv, TEST_DATA_DIR)
     assert TEST_DATA_DIR / "1qys.pdb1" in test_file_paths, f"Expected to find {TEST_DATA_DIR / '1qys.pdb1'} as part of the generated paths."
     assert TEST_DATA_DIR / "1qys.pdb1" in test_file_paths, f"Expected to find {TEST_DATA_DIR / '3qy1A.pdb1'} as part of the generated paths."
     assert TEST_DATA_DIR / "6ct4.pdb1" in test_file_paths, f"Expected to find {TEST_DATA_DIR / '6ct4.pdb1'} as part of the generated paths."
