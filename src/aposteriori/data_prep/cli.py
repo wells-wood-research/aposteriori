@@ -231,11 +231,6 @@ def cli(
                 f"{structure_file_folder} file not found. Did you specify the -d argument for the download file? If so, check your spelling."
             )
             sys.exit()
-    # Filter by blacklist:
-    if blacklist_csv and pathlib.Path(blacklist_csv).exists():
-        structure_files = filter_structures_by_blacklist(
-            structure_files, pathlib.Path(blacklist_csv)
-        )
     # Create Codec:
     if atom_encoder == "CNO":
         codec = Codec.CNO()
@@ -264,6 +259,7 @@ def cli(
         verbosity=verbose,
         encode_cb=encode_cb,
         voxels_as_gaussian=voxels_as_gaussian,
+        blacklist_csv=blacklist_csv,
     )
     return
 
