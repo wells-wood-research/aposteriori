@@ -194,7 +194,9 @@ class Codec:
             )
             encoded_atom[:, :, :, atom_idx] += atom_to_encode
         else:
-            raise ValueError(f"{atom_label} not found in {self.atomic_labels} encoding. Returning empty array.")
+            raise ValueError(
+                f"{atom_label} not found in {self.atomic_labels} encoding. Returning empty array."
+            )
 
         return encoded_atom, atom_idx
 
@@ -384,9 +386,9 @@ def convert_atom_to_gaussian_density(
         # Unpack x, y, z:
         x, y, z = modifiers_triple
         # Obtain x, y, z ranges for the gaussian
-        x_range = np.linspace(-range_val+x, range_val-x, resolution)
-        y_range = np.linspace(-range_val+y, range_val-y, resolution)
-        z_range = np.linspace(-range_val+z, range_val-z, resolution)
+        x_range = np.linspace(-range_val + x, range_val - x, resolution)
+        y_range = np.linspace(-range_val + y, range_val - y, resolution)
+        z_range = np.linspace(-range_val + z, range_val - z, resolution)
         # Calculate density for each axis at each point
         x_vals, y_vals, z_vals = (
             np.exp(-1 * ((x_range - x) / wanderwaal_radius) ** 2, dtype=np.float16),
@@ -414,13 +416,16 @@ def convert_atom_to_gaussian_density(
         xyz_coordinates = np.where(gaussian_frame == 0)
         # Identify the real (undiscretized) coordinates of the atom in the 3x3x3 matrix
         x, y, z = modifiers_triple
-        x, y, z = x+1, y+1, z+1
+        x, y, z = x + 1, y + 1, z + 1
         # The transpose changes arrays of [y], [x], [z] into [y, x, z]
         for voxel_coord in np.array(xyz_coordinates).T:
             # Extract voxel coords:
             vy, vx, vz = voxel_coord
             # Calculate Density:
-            voxel_density = np.exp(-((vx-x)**2 + (vy-y)**2 + (vz-z)**2)/wanderwaal_radius**2)
+            voxel_density = np.exp(
+                -((vx - x) ** 2 + (vy - y) ** 2 + (vz - z) ** 2)
+                / wanderwaal_radius ** 2
+            )
             # Add density to frame:
             gaussian_frame[vy, vx, vz] = voxel_density
 
@@ -1168,6 +1173,50 @@ def _fetch_pdb(
         _ = _select_pdb_chain(output_path, chain)
 
     return output_path
+
+
+def filter_structures_by_blacklist(
+    structure_files: t.List[pathlib.Path], blacklist_csv_file: pathlib.Path
+) -> t.List[StrOrPath]:
+    """
+    Filters structures contained in a blacklist csv file.
+
+    Parameters
+    ----------
+    structure_files: List[pathlib.Path]
+        List of paths to pdb files to be processed into frames
+    blacklist_csv_file: pathlib.Path
+        Path to blacklist csv.
+
+    Returns
+    -------
+    filtered_structure_files: List[pathlib.Path]
+        List of filtered paths to pdb files to be processed into frames
+    """
+
+    # Open blacklist file and extract list:
+    with open(blacklist_csv_file) as csv_file:
+        blacklist_csv = csv.reader(csv_file, delimiter=",")
+        # Reading to set to make sure entries are unique:
+        blacklist = set([b_pdb.strip(" ").lower() for b_pdb in next(blacklist_csv)])
+
+    filtered_structure_files = []
+    # Loop through structures
+    for structure in structure_files:
+        curr_pdb = str(structure.stem).lower()
+        print(curr_pdb)
+        # if pdb not in blacklist
+        if curr_pdb not in blacklist:
+            # keep it:
+            filtered_structure_files.append(structure)
+    # Calculate difference
+    old_length = len(structure_files)
+    new_length = len(filtered_structure_files)
+    print(
+        f"Filtered {old_length - new_length} structures from the original {old_length} structures"
+    )
+
+    return filtered_structure_files
 
 
 def download_pdb_from_csv_file(
