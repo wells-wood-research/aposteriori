@@ -474,7 +474,7 @@ def test_download_pdb_from_csv_file():
 
 
 def test_filter_structures_by_blacklist():
-    blacklist_file = Path("tests/testing_files/csv_pdb_list/pdb_to_filter.csv")
+    blacklist_file = Path("tests/testing_files/filter/pdb_to_filter.csv")
     structure_files = []
     for pdb in ['1qys.pdb1', '3qy1A.pdb1', '6ct4.pdb1']:
         structure_files.append(Path(pdb))
