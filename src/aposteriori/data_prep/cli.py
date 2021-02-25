@@ -10,6 +10,7 @@ from aposteriori.data_prep.create_frame_data_set import (
     StrOrPath,
     default_atom_filter,
     download_pdb_from_csv_file,
+    filter_structures_by_blacklist,
 )
 
 
@@ -136,6 +137,12 @@ from aposteriori.data_prep.create_frame_data_set import (
         "Boolean - whether to encode voxels as gaussians (True) or (Voxels). The gaussian representation uses the wanderwaal's radius of each atom using the formula e^(-x^2) where x is Vx - x)^2 + (Vy - y)^2) + (Vz - z)^2)/ r^2 and  (Vx, Vy, Vz) is the position of the voxel in space. (x, y, z) is the position of the atom in space, r is the Van der Waal’s radius of the atom. They are then normalized to add up to 1."
     ),
 )
+@click.option(
+    "-b",
+    "--blacklist",
+    type=click.Path(exists=True, readable=True),
+    help=("Path to csv file with structures to be removed."),
+)
 def cli(
     structure_file_folder: str,
     output_folder: str,
@@ -151,7 +158,8 @@ def cli(
     encode_cb: bool,
     atom_encoder: str,
     download_file: str,
-    voxels_as_gaussian: bool
+    voxels_as_gaussian: bool,
+    blacklist_csv: str,
 ):
     """Creates a dataset of voxelized amino acid frames.
 
@@ -200,9 +208,9 @@ def cli(
     """
     # If a download file is specified, open the file and download
     if download_file and pathlib.Path(download_file).exists():
-            structure_files: t.List[StrOrPath] = download_pdb_from_csv_file(
-                pathlib.Path(download_file)
-            )
+        structure_files: t.List[StrOrPath] = download_pdb_from_csv_file(
+            pathlib.Path(download_file)
+        )
     else:
         # Extract all the PDBs in folder:
         if pathlib.Path(structure_file_folder).exists():
@@ -223,7 +231,11 @@ def cli(
                 f"{structure_file_folder} file not found. Did you specify the -d argument for the download file? If so, check your spelling."
             )
             sys.exit()
-
+    # Filter by blacklist:
+    if blacklist_csv and pathlib.Path(blacklist_csv).exists():
+        structure_files = filter_structures_by_blacklist(
+            structure_files, pathlib.Path(blacklist_csv)
+        )
     # Create Codec:
     if atom_encoder == "CNO":
         codec = Codec.CNO()
@@ -251,7 +263,7 @@ def cli(
         gzipped=gzipped,
         verbosity=verbose,
         encode_cb=encode_cb,
-        voxels_as_gaussian=voxels_as_gaussian
+        voxels_as_gaussian=voxels_as_gaussian,
     )
     return
 

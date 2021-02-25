@@ -463,11 +463,24 @@ def test_add_gaussian_at_position():
 
 
 def test_download_pdb_from_csv_file():
-    csv_test_file = Path("tests/testing_files/csv_pdb_list/pdb_to_test.csv")
-    test_file_paths = cfds.download_pdb_from_csv_file(csv_test_file, TEST_DATA_DIR)
+    blacklist_csv = Path("tests/testing_files/csv_pdb_list/pdb_to_filter.csv")
+    test_file_paths = cfds.download_pdb_from_csv_file(blacklist_csv, TEST_DATA_DIR)
     assert TEST_DATA_DIR / "1qys.pdb1" in test_file_paths, f"Expected to find {TEST_DATA_DIR / '1qys.pdb1'} as part of the generated paths."
     assert TEST_DATA_DIR / "1qys.pdb1" in test_file_paths, f"Expected to find {TEST_DATA_DIR / '3qy1A.pdb1'} as part of the generated paths."
     assert TEST_DATA_DIR / "6ct4.pdb1" in test_file_paths, f"Expected to find {TEST_DATA_DIR / '6ct4.pdb1'} as part of the generated paths."
     assert (TEST_DATA_DIR / "1qys.pdb1").exists(), f"Expected download of 1QYS to return PDB file"
     assert (TEST_DATA_DIR / "3qy1A.pdb1").exists(), f"Expected download of 1QYS to return PDB file"
     assert (TEST_DATA_DIR / "6ct4.pdb1").exists(), f"Expected download of 6CT4 to return PDB file"
+
+
+def test_filter_structures_by_blacklist():
+    blacklist_file = Path("tests/testing_files/csv_pdb_list/pdb_to_filter.csv")
+    structure_files = []
+    for pdb in ['1qys.pdb1', '3qy1A.pdb1', '6ct4.pdb1']:
+        structure_files.append(Path(pdb))
+    filtered_structures = cfds.filter_structures_by_blacklist(structure_files, blacklist_file)
+    assert len(structure_files) == 3, f"Expected 3 structures to be in the list"
+    assert len(filtered_structures) == 2, f"Expected 2 structures to be in the filtered list"
+    assert Path('1qys.pdb1') in filtered_structures, f"Expected 1qys to be in the list"
+    assert Path('6ct4.pdb1') in filtered_structures, f"Expected 6CT4 to be in the list"
+    assert Path('3qy1A.pdb1') not in filtered_structures,f"Expected 3qy1A not to be in the list"
