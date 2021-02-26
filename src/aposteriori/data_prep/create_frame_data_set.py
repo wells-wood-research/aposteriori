@@ -1211,7 +1211,9 @@ def filter_structures_by_blacklist(
         # Reading to set to make sure entries are unique:
         for b_pdb in next(blacklist_csv):
             curr_pdb = b_pdb.strip(" ").lower()
-            assert len(curr_pdb) == 4 or len(curr_pdb) == 5, f"Expected PDB to be length of 4 or 5 but found {len(curr_pdb)}"
+            assert (
+                len(curr_pdb) == 4 or len(curr_pdb) == 5
+            ), f"Expected PDB to be length of 4 or 5 but found {len(curr_pdb)}"
             blacklist.add(curr_pdb)
 
     filtered_structure_files = []
@@ -1272,7 +1274,7 @@ def download_pdb_from_csv_file(
 
 
 def make_frame_dataset(
-    structure_files: t.List[StrOrPath],
+    input_structure_files: t.List[StrOrPath],
     output_folder: StrOrPath,
     name: str,
     frame_edge_length: float,
@@ -1292,7 +1294,7 @@ def make_frame_dataset(
 
     Parameters
     ----------
-    structure_files: List[str or pathlib.Path]
+    input_structure_files: List[str or pathlib.Path]
         List of paths to pdb files to be processed into frames
     output_folder: StrOrPath
         Path to folder where output will be written.
@@ -1338,12 +1340,17 @@ def make_frame_dataset(
         A path to the location of the output dataset.
     """
     # Filter by blacklist:
-    if blacklist_csv and pathlib.Path(blacklist_csv).exists():
-        structure_files = filter_structures_by_blacklist(
-            structure_files, pathlib.Path(blacklist_csv)
-        )
-    elif blacklist_csv and pathlib.Path(blacklist_csv).exists() == False:
-        raise InputError(f"Blacklist Path {blacklist_csv} not found.")
+    if blacklist_csv:
+        # If blacklist path exists:
+        if pathlib.Path(blacklist_csv).exists():
+            structure_files = filter_structures_by_blacklist(
+                input_structure_files, pathlib.Path(blacklist_csv)
+            )
+        else:
+            # Blacklist not fount:
+            raise InputError(f"Blacklist Path {blacklist_csv} not found.")
+    else:
+        structure_files = input_structure_files
 
     chain_filter_dict: t.Optional[t.Dict[str, t.List[str]]]
 

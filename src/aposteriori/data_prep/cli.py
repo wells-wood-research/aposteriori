@@ -246,7 +246,7 @@ def cli(
         ], f"Expected encoder to be CNO, CNOCB, CNOCBCA but got {atom_encoder}"
 
     make_frame_dataset(
-        structure_files=structure_files,
+        input_structure_files=structure_files,
         output_folder=output_folder,
         name=name,
         frame_edge_length=frame_edge_length,
