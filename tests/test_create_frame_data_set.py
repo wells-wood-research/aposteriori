@@ -138,7 +138,7 @@ def test_even_voxels_per_side(voxels_per_side):
     codec = cfds.Codec.CNO()
     with pytest.raises(AssertionError, match=r".*must be odd*"):
         output_file_path = cfds.make_frame_dataset(
-            structure_files=["eep"],
+            input_structure_files=["eep"],
             output_folder=".",
             name="test_dataset",
             frame_edge_length=18.0,
@@ -164,7 +164,7 @@ def test_make_frame_dataset():
         # Obtain atom encoder:
         codec = cfds.Codec.CNO()
         output_file_path = cfds.make_frame_dataset(
-            structure_files=[test_file],
+            input_structure_files=[test_file],
             output_folder=tmpdir,
             name="test_dataset",
             frame_edge_length=frame_edge_length,
@@ -223,7 +223,7 @@ def test_make_frame_dataset_as_gaussian():
         # Obtain atom encoder:
         codec = cfds.Codec.CNO()
         output_file_path = cfds.make_frame_dataset(
-            structure_files=[test_file],
+            input_structure_files=[test_file],
             output_folder=tmpdir,
             name="test_dataset",
             frame_edge_length=frame_edge_length,
@@ -299,7 +299,7 @@ def test_make_frame_dataset_as_gaussian():
         # Obtain atom encoder:
         codec = cfds.Codec.CNO()
         output_file_path = cfds.make_frame_dataset(
-            structure_files=[test_file],
+            input_structure_files=[test_file],
             output_folder=tmpdir,
             name="test_dataset",
             frame_edge_length=frame_edge_length,
