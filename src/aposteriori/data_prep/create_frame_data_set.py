@@ -1221,6 +1221,7 @@ def filter_structures_by_blacklist(
     for structure in structure_files:
         # Remove extension: (deals with double extension too)
         curr_pdb = structure.stem.split('.')[0].lower()
+        print(curr_pdb)
         assert (
                 len(curr_pdb) == 4 or len(curr_pdb) == 5
         ), f"Expected PDB to be length of 4 or 5 but found {len(curr_pdb)}"
