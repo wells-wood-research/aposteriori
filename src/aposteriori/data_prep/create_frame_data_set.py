@@ -1180,7 +1180,7 @@ def _fetch_pdb(
     if len(pdb_code) == 5:
         # Extract chain from string:
         chain = pdb_code[-1]
-        _, output_path = _select_pdb_chain(output_path, chain)
+        output_path = _select_pdb_chain(output_path, chain)
 
     return output_path
 
