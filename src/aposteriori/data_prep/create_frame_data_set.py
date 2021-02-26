@@ -1080,7 +1080,7 @@ def process_paths(
 
 
 def _select_pdb_chain(
-    pdb_path: pathlib.Path, chain: str
+    pdb_path: pathlib.Path, chain: str, return_chain_path: bool = True
 ) -> (ampal.Assembly, pathlib.Path):
     """
     Select a chain from a pdb file. The chain will remove the original pdb file.
@@ -1094,6 +1094,8 @@ def _select_pdb_chain(
         Path to the pdb structure.
     chain: str
         Chain to be selected for the pdb
+    return_chain_path: bool
+        Whether to return new_chain_path (True), or return chain (False)
     Returns
     -------
     chain_pdb: ampal.Assembly
@@ -1122,7 +1124,11 @@ def _select_pdb_chain(
     # Delete original file
     if pdb_path.exists():
         pdb_path.unlink()
-    return chain_pdb, output_pdb_path
+
+    if return_chain_path:
+        return output_pdb_path
+    else:
+        return chain_pdb
 
 
 def _fetch_pdb(
