@@ -1274,7 +1274,7 @@ def download_pdb_from_csv_file(
 
 
 def make_frame_dataset(
-    input_structure_files: t.List[StrOrPath],
+    structure_files: t.List[StrOrPath],
     output_folder: StrOrPath,
     name: str,
     frame_edge_length: float,
@@ -1294,7 +1294,7 @@ def make_frame_dataset(
 
     Parameters
     ----------
-    input_structure_files: List[str or pathlib.Path]
+    structure_files: List[str or pathlib.Path]
         List of paths to pdb files to be processed into frames
     output_folder: StrOrPath
         Path to folder where output will be written.
@@ -1339,18 +1339,6 @@ def make_frame_dataset(
     output_file_path: pathlib.Path
         A path to the location of the output dataset.
     """
-    # Filter by blacklist:
-    if blacklist_csv:
-        # If blacklist path exists:
-        if pathlib.Path(blacklist_csv).exists():
-            structure_files = filter_structures_by_blacklist(
-                input_structure_files, pathlib.Path(blacklist_csv)
-            )
-        else:
-            # Blacklist not fount:
-            raise InputError(f"Blacklist Path {blacklist_csv} not found.")
-    else:
-        structure_files = input_structure_files
 
     chain_filter_dict: t.Optional[t.Dict[str, t.List[str]]]
 
@@ -1384,6 +1372,17 @@ def make_frame_dataset(
             f"{original_path_num - len(structure_file_paths)} structure file/s were "
             f"not found in the Pieces filter file, these will not be processed."
         )
+    # Filter by blacklist:
+    if blacklist_csv:
+        # If blacklist path exists:
+        if pathlib.Path(blacklist_csv).exists():
+            structure_files = filter_structures_by_blacklist(
+                structure_files, pathlib.Path(blacklist_csv)
+            )
+        else:
+            # Blacklist not fount:
+            raise InputError(f"Blacklist Path {blacklist_csv} not found.")
+
     output_file_path = pathlib.Path(output_folder) / (name + ".hdf5")
     total_files = len(structure_file_paths)
     processed_files = 0
