@@ -1409,7 +1409,7 @@ def make_frame_dataset(
             print("Aborting.")
             sys.exit()
     process_paths(
-        structure_file_paths=structure_file_paths,
+        structure_file_paths=filtered_structure_files,
         output_path=output_file_path,
         frame_edge_length=frame_edge_length,
         voxels_per_side=voxels_per_side,
