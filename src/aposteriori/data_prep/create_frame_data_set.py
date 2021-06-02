@@ -905,6 +905,8 @@ def save_results(
 
                 pdb_group = hd5.create_group(pdb_code)
                 for chain_id, res_results in chain_dict.items():
+                    # This is required as at times the pdb does not have a chain name:
+                    chain_id = "A" if not chain_id else chain_id
                     if verbosity > 0:
                         print(f"{pdb_code}:\tStoring chain {chain_id}...")
                     if chain_id in pdb_group:
