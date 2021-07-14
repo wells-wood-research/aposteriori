@@ -1383,13 +1383,13 @@ def make_frame_dataset(
         # If blacklist path exists:
         if pathlib.Path(blacklist_csv).exists():
             filtered_structure_files = filter_structures_by_blacklist(
-                structure_files, pathlib.Path(blacklist_csv)
+                structure_file_paths, pathlib.Path(blacklist_csv)
             )
         else:
             # Blacklist not fount:
-            raise InputError(f"Blacklist Path {blacklist_csv} not found.")
+            raise ValueError(f"Blacklist Path {blacklist_csv} not found.")
     else:
-        filtered_structure_files = structure_files
+        filtered_structure_files = structure_file_paths
 
     output_file_path = pathlib.Path(output_folder) / (name + ".hdf5")
     total_files = len(filtered_structure_files)
