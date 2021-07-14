@@ -14,7 +14,7 @@ matplotlib = "^3.2.1"
 mypy = "^0.770"
 click = "^7.1.1"
 h5py = "^2.10.0"
-tensorflow = "^2.3.0"
+attr = "^0.3.1"
 
 [tool.poetry.dev-dependencies]
 black = "^19.10b0"
