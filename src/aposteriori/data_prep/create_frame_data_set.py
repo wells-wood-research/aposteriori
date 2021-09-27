@@ -702,7 +702,7 @@ def create_frames_from_structure(
     voxels_per_side: int,
     atom_filter_fn: t.Callable[[ampal.Atom], bool],
     chain_filter_list: t.Optional[t.List[str]],
-    gzipped: bool,
+    is_pdb_gzipped: bool,
     verbosity: int,
     encode_cb: bool,
     codec: object,
@@ -726,7 +726,7 @@ def create_frames_from_structure(
         removed.
     chain_filter_list: t.Optional[t.List[str]]
         Chains to be processed.
-    gzipped: bool
+    is_pdb_gzipped: bool
         Indicates if structure files are gzipped or not.
     verbosity: int
         Level of logging sent to std out.
@@ -740,7 +740,7 @@ def create_frames_from_structure(
     """
     name = structure_path.name.split(".")[0]
     chain_dict: ChainDict = {}
-    if gzipped:
+    if is_pdb_gzipped:
         with gzip.open(str(structure_path), "rb") as inf:
             assembly = ampal.load_pdb(inf.read().decode(), path=False)[0]
     else:
@@ -836,7 +836,7 @@ def process_single_path(
     atom_filter_fn: t.Callable[[ampal.Atom], bool],
     chain_filter_dict: t.Optional[t.Dict[str, t.List[str]]],
     errors: t.Dict[str, str],
-    gzipped: bool,
+    is_pdb_gzipped: bool,
     verbosity: int,
     encode_cb: bool,
     codec: object,
@@ -861,7 +861,7 @@ def process_single_path(
                 voxels_per_side,
                 atom_filter_fn,
                 chain_filter_list,
-                gzipped,
+                is_pdb_gzipped,
                 verbosity,
                 encode_cb,
                 codec,
@@ -883,6 +883,8 @@ def save_results(
     frames: mp.Value,
     verbosity: int,
     metadata: DatasetMetadata,
+    gzip_compression: bool,
+    shuffle_filter: bool,
 ):
     """Saves voxelized structures to a hdf5 object."""
     with h5py.File(str(h5_path), "w") as hd5:
@@ -935,6 +937,8 @@ def save_results(
                             res_result.residue_id,
                             data=res_result.data,
                             dtype=voxel_output_type,
+                            compression="gzip" if gzip_compression else None,
+                            shuffle=shuffle_filter,
                         )
                         res_dataset.attrs["label"] = res_result.label
                         res_dataset.attrs[
@@ -955,11 +959,13 @@ def process_paths(
     atom_filter_fn: t.Callable[[ampal.Atom], bool],
     chain_filter_dict: t.Optional[t.Dict[str, t.List[str]]],
     processes: int,
-    gzipped: bool,
+    is_pdb_gzipped: bool,
     verbosity: int,
     encode_cb: bool,
     codec: object,
     voxels_as_gaussian: bool,
+    gzip_compression: bool = False,
+    shuffle_filter: bool = False,
 ):
     """Discretizes a list of structures and stores them in a HDF5 object.
 
@@ -983,7 +989,7 @@ def process_paths(
         Chains to be selected from the PDB file.
     processes: int
         Number of processes to used to process structure files.
-    gzipped: bool
+    is_pdb_gzipped: bool
         Indicates if structure files are gzipped or not.
     verbosity: int
         Level of logging sent to std out.
@@ -1018,7 +1024,7 @@ def process_paths(
                     atom_filter_fn,
                     chain_filter_dict,
                     errors,
-                    gzipped,
+                    is_pdb_gzipped,
                     verbosity,
                     encode_cb,
                     codec,
@@ -1052,6 +1058,8 @@ def process_paths(
                 frames,
                 verbosity,
                 metadata,
+                gzip_compression,
+                shuffle_filter,
             ),
         )
         all_processes = workers + [storer]
@@ -1289,12 +1297,14 @@ def make_frame_dataset(
     atom_filter_fn: t.Callable[[ampal.Atom], bool] = default_atom_filter,
     pieces_filter_file: t.Optional[StrOrPath] = None,
     processes: int = 1,
-    gzipped: bool = False,
+    is_pdb_gzipped: bool = False,
     verbosity: int = 1,
     require_confirmation: bool = True,
     encode_cb: bool = True,
     voxels_as_gaussian: bool = False,
     blacklist_csv: pathlib.Path = None,
+    gzip_compression: bool = False,
+    shuffle_filter: bool = False,
 ) -> pathlib.Path:
     """Creates a dataset of voxelized amino acid frames.
 
@@ -1323,7 +1333,7 @@ def make_frame_dataset(
         chains to be included in the dataset.
     processes: int
         Number of processes to used to process structure files.
-    gzipped: bool
+    is_pdb_gzipped: bool
         Indicates if structure files are gzipped or not.
     verbosity: int
         Level of logging sent to std out.
@@ -1418,11 +1428,13 @@ def make_frame_dataset(
         processes=processes,
         atom_filter_fn=atom_filter_fn,
         chain_filter_dict=chain_filter_dict,
-        gzipped=gzipped,
+        is_pdb_gzipped=is_pdb_gzipped,
         verbosity=verbosity,
         encode_cb=encode_cb,
         codec=codec,
         voxels_as_gaussian=voxels_as_gaussian,
+        gzip_compression = gzip_compression,
+        shuffle_filter = shuffle_filter,
     )
     return output_file_path
 
