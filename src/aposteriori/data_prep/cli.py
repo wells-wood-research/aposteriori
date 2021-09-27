@@ -79,7 +79,7 @@ from aposteriori.data_prep.create_frame_data_set import (
 )
 @click.option(
     "-z",
-    "--gzipped",
+    "--is_pdb_gzipped",
     is_flag=True,
     help=(
         "If True, this flag indicates that the structure files are gzipped. Default = "
@@ -166,7 +166,7 @@ def cli(
     frame_edge_length: float,
     voxels_per_side: int,
     processes: int,
-    gzipped: bool,
+    is_pdb_gzipped: bool,
     recursive: bool,
     verbose: int,
     encode_cb: bool,
@@ -271,7 +271,7 @@ def cli(
         atom_filter_fn=default_atom_filter,
         pieces_filter_file=pieces_filter_file,
         processes=processes,
-        gzipped=gzipped,
+        is_pdb_gzipped=is_pdb_gzipped,
         verbosity=verbose,
         encode_cb=encode_cb,
         voxels_as_gaussian=voxels_as_gaussian,
