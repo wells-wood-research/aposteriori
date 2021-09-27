@@ -143,6 +143,20 @@ from aposteriori.data_prep.create_frame_data_set import (
     type=click.Path(exists=True, readable=True),
     help=("Path to csv file with structures to be removed."),
 )
+@click.option(
+    "-comp",
+    "--compression_gzip",
+    type=bool,
+    default=False,
+    help=("Whether to comrpess the dataset with gzip compression."),
+)
+@click.option(
+    "-sf",
+    "--shuffle_filter",
+    type=bool,
+    default=False,
+    help=("Whether to activate shuffle filter for gzip compression"),
+)
 def cli(
     structure_file_folder: str,
     output_folder: str,
@@ -160,6 +174,8 @@ def cli(
     download_file: str,
     voxels_as_gaussian: bool,
     blacklist_csv: str,
+    compression_gzip: bool,
+    shuffle_filter: bool,
 ):
     """Creates a dataset of voxelized amino acid frames.
 
@@ -260,10 +276,10 @@ def cli(
         encode_cb=encode_cb,
         voxels_as_gaussian=voxels_as_gaussian,
         blacklist_csv=blacklist_csv,
+        gzip_compression=compression_gzip,
+        shuffle_filter=shuffle_filter,
     )
     return
-
-
 # }}}
 
 
