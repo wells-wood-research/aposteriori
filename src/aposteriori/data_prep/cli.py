@@ -134,7 +134,7 @@ from aposteriori.data_prep.create_frame_data_set import (
     type=bool,
     default=False,
     help=(
-        "Boolean - whether to encode voxels as gaussians (True) or (Voxels). The gaussian representation uses the wanderwaal's radius of each atom using the formula e^(-x^2) where x is Vx - x)^2 + (Vy - y)^2) + (Vz - z)^2)/ r^2 and  (Vx, Vy, Vz) is the position of the voxel in space. (x, y, z) is the position of the atom in space, r is the Van der Waal’s radius of the atom. They are then normalized to add up to 1."
+        "Boolean - whether to encode voxels as gaussians (True) or voxels (False). The gaussian representation uses the wanderwaal's radius of each atom using the formula e^(-x^2) where x is Vx - x)^2 + (Vy - y)^2) + (Vz - z)^2)/ r^2 and  (Vx, Vy, Vz) is the position of the voxel in space. (x, y, z) is the position of the atom in space, r is the Van der Waal’s radius of the atom. They are then normalized to add up to 1."
     ),
 )
 @click.option(
@@ -147,15 +147,8 @@ from aposteriori.data_prep.create_frame_data_set import (
     "-comp",
     "--compression_gzip",
     type=bool,
-    default=False,
+    default=True,
     help=("Whether to comrpess the dataset with gzip compression."),
-)
-@click.option(
-    "-sf",
-    "--shuffle_filter",
-    type=bool,
-    default=False,
-    help=("Whether to activate shuffle filter for gzip compression"),
 )
 def cli(
     structure_file_folder: str,
@@ -175,7 +168,6 @@ def cli(
     voxels_as_gaussian: bool,
     blacklist_csv: str,
     compression_gzip: bool,
-    shuffle_filter: bool,
 ):
     """Creates a dataset of voxelized amino acid frames.
 
@@ -277,9 +269,10 @@ def cli(
         voxels_as_gaussian=voxels_as_gaussian,
         blacklist_csv=blacklist_csv,
         gzip_compression=compression_gzip,
-        shuffle_filter=shuffle_filter,
     )
     return
+
+
 # }}}
 
 

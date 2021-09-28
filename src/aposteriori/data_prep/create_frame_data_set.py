@@ -884,7 +884,6 @@ def save_results(
     verbosity: int,
     metadata: DatasetMetadata,
     gzip_compression: bool,
-    shuffle_filter: bool,
 ):
     """Saves voxelized structures to a hdf5 object."""
     with h5py.File(str(h5_path), "w") as hd5:
@@ -938,7 +937,6 @@ def save_results(
                             data=res_result.data,
                             dtype=voxel_output_type,
                             compression="gzip" if gzip_compression else None,
-                            shuffle=shuffle_filter,
                         )
                         res_dataset.attrs["label"] = res_result.label
                         res_dataset.attrs[
@@ -964,8 +962,7 @@ def process_paths(
     encode_cb: bool,
     codec: object,
     voxels_as_gaussian: bool,
-    gzip_compression: bool = False,
-    shuffle_filter: bool = False,
+    gzip_compression: bool = True,
 ):
     """Discretizes a list of structures and stores them in a HDF5 object.
 
@@ -1059,7 +1056,6 @@ def process_paths(
                 verbosity,
                 metadata,
                 gzip_compression,
-                shuffle_filter,
             ),
         )
         all_processes = workers + [storer]
@@ -1230,9 +1226,9 @@ def filter_structures_by_blacklist(
     # Loop through structures
     for structure in structure_files:
         # Remove extension: (deals with double extension too)
-        curr_pdb = structure.stem.split('.')[0].lower()
+        curr_pdb = structure.stem.split(".")[0].lower()
         assert (
-                len(curr_pdb) == 4 or len(curr_pdb) == 5
+            len(curr_pdb) == 4 or len(curr_pdb) == 5
         ), f"Expected PDB to be length of 4 or 5 but found {len(curr_pdb)}"
         # if pdb not in blacklist
         if curr_pdb[:4] not in blacklist:
@@ -1303,8 +1299,7 @@ def make_frame_dataset(
     encode_cb: bool = True,
     voxels_as_gaussian: bool = False,
     blacklist_csv: pathlib.Path = None,
-    gzip_compression: bool = False,
-    shuffle_filter: bool = False,
+    gzip_compression: bool = True,
 ) -> pathlib.Path:
     """Creates a dataset of voxelized amino acid frames.
 
@@ -1433,8 +1428,7 @@ def make_frame_dataset(
         encode_cb=encode_cb,
         codec=codec,
         voxels_as_gaussian=voxels_as_gaussian,
-        gzip_compression = gzip_compression,
-        shuffle_filter = shuffle_filter,
+        gzip_compression=gzip_compression,
     )
     return output_file_path
 
