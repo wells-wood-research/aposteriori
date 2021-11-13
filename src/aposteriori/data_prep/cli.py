@@ -230,6 +230,7 @@ def cli(
             pdb_csv_file=pathlib.Path(download_file),
             pdb_outpath=pathlib.Path(output_folder),
             verbosity=verbose,
+            workers=processes,
         )
     else:
         # Extract all the PDBs in folder:
