@@ -399,8 +399,8 @@ def test_download_pdb_from_csv_file():
         TEST_DATA_DIR / "1qys.pdb1" in test_file_paths
     ), f"Expected to find {TEST_DATA_DIR / '1qys.pdb1'} as part of the generated paths."
     assert (
-        TEST_DATA_DIR / "3ultA.pdb1" in test_file_paths
-    ), f"Expected to find {TEST_DATA_DIR / '3ultA.pdb1'} as part of the generated paths."
+        TEST_DATA_DIR / "3qy1A.pdb1" in test_file_paths
+    ), f"Expected to find {TEST_DATA_DIR / '3qy1A.pdb1'} as part of the generated paths."
     assert (
         TEST_DATA_DIR / "6ct4.pdb1" in test_file_paths
     ), f"Expected to find {TEST_DATA_DIR / '6ct4.pdb1'} as part of the generated paths."
@@ -408,13 +408,13 @@ def test_download_pdb_from_csv_file():
         TEST_DATA_DIR / "1qys.pdb1"
     ).exists(), f"Expected download of 1QYS to return PDB file"
     assert (
-        TEST_DATA_DIR / "3ultA.pdb1"
+        TEST_DATA_DIR / "3qy1A.pdb1"
     ).exists(), f"Expected download of 3QYA to return PDB file"
     assert (
         TEST_DATA_DIR / "6ct4.pdb1"
     ).exists(), f"Expected download of 6CT4 to return PDB file"
     # Delete files:
-    (TEST_DATA_DIR / "1qys.pdb1").unlink(), (TEST_DATA_DIR / "3ultA.pdb1").unlink(), (
+    (TEST_DATA_DIR / "1qys.pdb1").unlink(), (TEST_DATA_DIR / "3qy1A.pdb1").unlink(), (
         TEST_DATA_DIR / "6ct4.pdb1"
     ).unlink()
     test_file_paths = cfds.download_pdb_from_csv_file(
@@ -428,9 +428,9 @@ def test_download_pdb_from_csv_file():
             TEST_DATA_DIR / "1qys.pdb"
     ).exists(), f"Expected download of 1QYS to return PDB file"
     assert (
-            TEST_DATA_DIR / "3ultA.pdb"
+            TEST_DATA_DIR / "3qy1A.pdb"
     ).exists(), f"Expected download of 3QYA to return PDB file"
-    (TEST_DATA_DIR / "1qys.pdb").unlink(), (TEST_DATA_DIR / "3ultA.pdb").unlink()
+    (TEST_DATA_DIR / "1qys.pdb").unlink(), (TEST_DATA_DIR / "3qy1A.pdb").unlink()
 
     for i in range(0, 10):
         pdb_code = f'6ct4_{i}.pdb'
@@ -441,7 +441,7 @@ def test_download_pdb_from_csv_file():
 def test_filter_structures_by_blacklist():
     blacklist_file = Path("tests/testing_files/filter/pdb_to_filter.csv")
     structure_files = []
-    for pdb in ["1qys.pdb1", "3ultA.pdb1", "6ct4.pdb1"]:
+    for pdb in ["1qys.pdb1", "3qy1A.pdb1", "6ct4.pdb1"]:
         structure_files.append(Path(pdb))
     filtered_structures = cfds.filter_structures_by_blacklist(
         structure_files, blacklist_file
@@ -453,5 +453,5 @@ def test_filter_structures_by_blacklist():
     assert Path("1qys.pdb1") in filtered_structures, f"Expected 1qys to be in the list"
     assert Path("6ct4.pdb1") in filtered_structures, f"Expected 6CT4 to be in the list"
     assert (
-        Path("3ultA.pdb1") not in filtered_structures
-    ), f"Expected 3ultA not to be in the list"
+        Path("3qy1A.pdb1") not in filtered_structures
+    ), f"Expected 3qy1A not to be in the list"
