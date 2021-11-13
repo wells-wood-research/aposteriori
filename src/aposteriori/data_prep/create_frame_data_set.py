@@ -1155,11 +1155,14 @@ def process_paths(
 
 
 def _select_pdb_chain(
-    pdb_path: pathlib.Path,
+    output_pdb_path: pathlib.Path,
+    pdb_structure: ampal.Assembly,
+    pdb_name: str,
     chain: str,
     verbosity: int,
     return_chain_path: bool = True,
-) -> (ampal.Assembly, pathlib.Path):
+    nmr_state: int = None,
+) -> (pathlib.Path, ampal.Assembly):
     """
     Select a chain from a pdb file. The chain will remove the original pdb file.
     At the moment we only support the selection of one chain at the time, meaning
@@ -1181,31 +1184,28 @@ def _select_pdb_chain(
     output_pdb_path: pathlib.Path
         Output path with chain
     """
-    pdb_structure = ampal.load_pdb(pdb_path)
     # Check if PDB structure is container and select assembly:
-    if isinstance(pdb_structure, ampal.AmpalContainer):
-        if verbosity > 1:
-            warnings.warn(
-                f"Selecting the first state from the NMR structure {pdb_structure.id}"
-            )
-        pdb_structure = pdb_structure[0]
     chain_pdb = pdb_structure[chain]
     if verbosity > 1:
         warnings.warn(
-            f"ATTENTION: You selected chain {chain}, for PDB code {pdb_path}. We will replace the original PDB file with the selected chain. Remove the 5th letter of your PDB code if this is unwanted behaviour."
+            f"ATTENTION: You selected chain {chain}, for PDB code {pdb_name}. We will replace the original PDB file with the selected chain. Remove the 5th letter of your PDB code if this is unwanted behaviour."
         )
     # Save chain to file:
-    output_pdb_path = pathlib.Path(
-        str(pdb_path.with_suffix("")) + chain + pdb_path.suffix
-    )
-    with open(output_pdb_path, "w") as f:
+    pdb_name += chain
+    if nmr_state:
+        pdb_name += f"_{nmr_state}"
+    # Extract pdb extension:
+    ext_pdb = output_pdb_path.suffix
+    chain_pdb_path = output_pdb_path.parent / f"{pdb_name}{ext_pdb}"
+    # Save chain file
+    with open(chain_pdb_path, "w") as f:
         f.write(chain_pdb.pdb)
     # Delete original file
-    if pdb_path.exists():
-        pdb_path.unlink()
+    if output_pdb_path.exists():
+        output_pdb_path.unlink()
 
     if return_chain_path:
-        return output_pdb_path
+        return chain_pdb_path
     else:
         return chain_pdb
 
@@ -1215,6 +1215,7 @@ def _fetch_pdb(
     verbosity: int,
     output_folder: pathlib.Path,
     download_assembly: bool = True,
+    voxelise_all_states: bool = False,
     pdb_request_url: str = PDB_REQUEST_URL,
 ) -> pathlib.Path:
     """
@@ -1245,7 +1246,8 @@ def _fetch_pdb(
         f"Expected pdb code to be of length 4 or 5 (pdb+chain) but "
         f"got {len(pdb_code)}"
     )
-
+    if voxelise_all_states:
+        download_assembly = False
     # Retrieve pdb:
     if download_assembly:
         pdb_code_with_extension = f"{pdb_code[:4]}.pdb1"
@@ -1256,11 +1258,61 @@ def _fetch_pdb(
         pdb_request_url + pdb_code_with_extension,
         filename=output_path,
     )
+    # Load structure
+    pdb_structure = ampal.load_pdb(output_path)
     # If PDB code is 5, user likely specified a chain
     if len(pdb_code) == 5:
         # Extract chain from string:
         chain = pdb_code[-1]
-        output_path = _select_pdb_chain(output_path, chain, verbosity=verbosity)
+        # Check if PDB structure is container and select assembly:
+        if isinstance(pdb_structure, ampal.AmpalContainer) and len(pdb_structure) > 1:
+            if voxelise_all_states:
+                out_paths = []
+                for i, curr_structure in enumerate(pdb_structure):
+                    curr_outpath = _select_pdb_chain(
+                        output_pdb_path=output_path,
+                        pdb_structure=curr_structure,
+                        pdb_name=pdb_code[:4],
+                        chain=chain,
+                        verbosity=verbosity,
+                        nmr_state=i,
+                    )
+                    out_paths.append(curr_outpath)
+                output_path = out_paths
+            else:
+                if verbosity > 1:
+                    warnings.warn(
+                        f"Selecting the first state from the NMR structure {pdb_structure.id}"
+                    )
+                pdb_structure = pdb_structure[0]
+                output_path = _select_pdb_chain(
+                    output_pdb_path=output_path,
+                    pdb_structure=pdb_structure,
+                    pdb_name=pdb_code[:4],
+                    chain=chain,
+                    verbosity=verbosity,
+                )
+        else:
+            output_path = _select_pdb_chain(
+                output_pdb_path=output_path,
+                pdb_structure=pdb_structure,
+                pdb_name=pdb_code[:4],
+                chain=chain,
+                verbosity=verbosity,
+            )
+    elif len(pdb_code) == 4:
+        if voxelise_all_states:
+            if isinstance(pdb_structure, ampal.AmpalContainer) and len(pdb_structure) > 1:
+                ext_pdb = output_path.suffix
+                out_paths = []
+
+                for i, curr_structure in enumerate(pdb_structure):
+                    state_pdb_path = output_path.parent / f"{pdb_code[:4]}_{i}{ext_pdb}"
+                    # Save structure file:
+                    with open(state_pdb_path, "w") as f:
+                        f.write(curr_structure.pdb)
+                    out_paths.append(state_pdb_path)
+                output_path = out_paths
 
     return output_path
 
@@ -1323,6 +1375,7 @@ def download_pdb_from_csv_file(
     verbosity: int,
     pdb_outpath: pathlib.Path,
     workers: int,
+    voxelise_all_states: bool,
 ):
     """
     Dowloads PDB functional unit files of structures from a csv file.
@@ -1361,6 +1414,7 @@ def download_pdb_from_csv_file(
                 repeat(verbosity),
                 repeat(pdb_outpath),
                 repeat(True),
+                repeat(voxelise_all_states),
             ),
         )
         p.close()

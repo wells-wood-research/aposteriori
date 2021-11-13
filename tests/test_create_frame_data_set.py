@@ -141,7 +141,7 @@ def test_even_voxels_per_side(voxels_per_side):
             structure_files=["eep"],
             output_folder=".",
             name="test_dataset",
-            frame_edge_length=18.0,
+            frame_edge_length=frame_edge_length,
             voxels_per_side=voxels_per_side,
             require_confirmation=False,
             encode_cb=True,
@@ -206,82 +206,6 @@ def test_convert_atom_to_gaussian_density():
     opt_frame = cfds.convert_atom_to_gaussian_density((0.5, 0, 0), 0.6, optimized=True)
     non_opt_frame = cfds.convert_atom_to_gaussian_density((0.5, 0, 0), 0.6, optimized=False)
     np.testing.assert_array_almost_equal(opt_frame, non_opt_frame, decimal=2)
-
-
-def test_make_frame_dataset_as_gaussian():
-    """Tests the creation of a frame data set."""
-    test_file = TEST_DATA_DIR / "1ubq.pdb"
-    frame_edge_length = 18.0
-    voxels_per_side = 31
-
-    ampal_1ubq = ampal.load_pdb(str(test_file))
-    for atom in ampal_1ubq.get_atoms():
-        if not cfds.default_atom_filter(atom):
-            del atom.parent.atoms[atom.res_label]
-            del atom
-    with tempfile.TemporaryDirectory() as tmpdir:
-        # Obtain atom encoder:
-        codec = cfds.Codec.CNO()
-        output_file_path = cfds.make_frame_dataset(
-            structure_files=[test_file],
-            output_folder=tmpdir,
-            name="test_dataset",
-            frame_edge_length=frame_edge_length,
-            voxels_per_side=voxels_per_side,
-            verbosity=1,
-            require_confirmation=False,
-            codec=codec,
-            voxels_as_gaussian=True,
-        )
-        with h5py.File(output_file_path, "r") as dataset:
-            for n in range(1, 77):
-                # check that the frame for all the data frames match between the input
-                # arrays and the ones that come out of the HDF5 data set
-                residue_number = str(n)
-                test_frame = cfds.create_residue_frame(
-                    residue=ampal_1ubq["A"][residue_number],
-                    frame_edge_length=frame_edge_length,
-                    voxels_per_side=voxels_per_side,
-                    encode_cb=False,
-                    codec=codec,
-                    voxels_as_gaussian=True,
-                )
-                hdf5_array = dataset["1ubq"]["A"][residue_number][()]
-                npt.assert_array_equal(
-                    hdf5_array,
-                    test_frame,
-                    err_msg=(
-                        "The frame in the HDF5 data set should be the same as the "
-                        "input frame."
-                    ),
-                )
-
-
-@settings(deadline=700)
-@given(integers(min_value=0, max_value=214))
-def test_default_atom_filter(residue_number: int):
-    assembly = ampal.load_pdb(str(TEST_DATA_DIR / "3qy1.pdb"))
-    focus_residue = assembly[0][residue_number]
-    backbone_atoms = ("N", "CA", "C", "O")
-
-    for atom in focus_residue:
-        filtered_atom = True if atom.res_label in backbone_atoms else False
-        filtered_scenario = cfds.default_atom_filter(atom)
-        assert filtered_atom == filtered_scenario, f"Expected {atom.res_label} to return {filtered_atom} after filter"
-
-
-@settings(deadline=700)
-@given(integers(min_value=0, max_value=214))
-def test_cb_atom_filter(residue_number: int):
-    assembly = ampal.load_pdb(str(TEST_DATA_DIR / "3qy1.pdb"))
-    focus_residue = assembly[0][residue_number]
-    backbone_atoms = ("N", "CA", "C", "O", "CB")
-
-    for atom in focus_residue:
-        filtered_atom = True if atom.res_label in backbone_atoms else False
-        filtered_scenario = cfds.keep_sidechain_cb_atom_filter(atom)
-        assert filtered_atom == filtered_scenario, f"Expected {atom.res_label} to return {filtered_atom} after filter"
-
 
 
 def test_make_frame_dataset_as_gaussian():
@@ -464,23 +388,70 @@ def test_add_gaussian_at_position():
 
 def test_download_pdb_from_csv_file():
     download_csv = Path("tests/testing_files/csv_pdb_list/pdb_to_test.csv")
-    test_file_paths = cfds.download_pdb_from_csv_file(download_csv,verbosity=1, pdb_outpath = TEST_DATA_DIR, workers=3)
-    assert TEST_DATA_DIR / "1qys.pdb1" in test_file_paths, f"Expected to find {TEST_DATA_DIR / '1qys.pdb1'} as part of the generated paths."
-    assert TEST_DATA_DIR / "1qys.pdb1" in test_file_paths, f"Expected to find {TEST_DATA_DIR / '3qy1A.pdb1'} as part of the generated paths."
-    assert TEST_DATA_DIR / "6ct4.pdb1" in test_file_paths, f"Expected to find {TEST_DATA_DIR / '6ct4.pdb1'} as part of the generated paths."
-    assert (TEST_DATA_DIR / "1qys.pdb1").exists(), f"Expected download of 1QYS to return PDB file"
-    assert (TEST_DATA_DIR / "3qy1A.pdb1").exists(), f"Expected download of 3QYA to return PDB file"
-    assert (TEST_DATA_DIR / "6ct4.pdb1").exists(), f"Expected download of 6CT4 to return PDB file"
+    test_file_paths = cfds.download_pdb_from_csv_file(
+        download_csv,
+        verbosity=1,
+        pdb_outpath=TEST_DATA_DIR,
+        workers=3,
+        voxelise_all_states=False,
+    )
+    assert (
+        TEST_DATA_DIR / "1qys.pdb1" in test_file_paths
+    ), f"Expected to find {TEST_DATA_DIR / '1qys.pdb1'} as part of the generated paths."
+    assert (
+        TEST_DATA_DIR / "3ultA.pdb1" in test_file_paths
+    ), f"Expected to find {TEST_DATA_DIR / '3ultA.pdb1'} as part of the generated paths."
+    assert (
+        TEST_DATA_DIR / "6ct4.pdb1" in test_file_paths
+    ), f"Expected to find {TEST_DATA_DIR / '6ct4.pdb1'} as part of the generated paths."
+    assert (
+        TEST_DATA_DIR / "1qys.pdb1"
+    ).exists(), f"Expected download of 1QYS to return PDB file"
+    assert (
+        TEST_DATA_DIR / "3ultA.pdb1"
+    ).exists(), f"Expected download of 3QYA to return PDB file"
+    assert (
+        TEST_DATA_DIR / "6ct4.pdb1"
+    ).exists(), f"Expected download of 6CT4 to return PDB file"
+    # Delete files:
+    (TEST_DATA_DIR / "1qys.pdb1").unlink(), (TEST_DATA_DIR / "3ultA.pdb1").unlink(), (
+        TEST_DATA_DIR / "6ct4.pdb1"
+    ).unlink()
+    test_file_paths = cfds.download_pdb_from_csv_file(
+        download_csv,
+        verbosity=1,
+        pdb_outpath=TEST_DATA_DIR,
+        workers=3,
+        voxelise_all_states=True,
+    )
+    assert (
+            TEST_DATA_DIR / "1qys.pdb"
+    ).exists(), f"Expected download of 1QYS to return PDB file"
+    assert (
+            TEST_DATA_DIR / "3ultA.pdb"
+    ).exists(), f"Expected download of 3QYA to return PDB file"
+    (TEST_DATA_DIR / "1qys.pdb").unlink(), (TEST_DATA_DIR / "3ultA.pdb").unlink()
 
+    for i in range(0, 10):
+        pdb_code = f'6ct4_{i}.pdb'
+        new_paths = TEST_DATA_DIR / pdb_code
+        assert new_paths.exists(), f"Could not find path {new_paths} for {pdb_code}"
+        new_paths.unlink()
 
 def test_filter_structures_by_blacklist():
     blacklist_file = Path("tests/testing_files/filter/pdb_to_filter.csv")
     structure_files = []
-    for pdb in ['1qys.pdb1', '3qy1A.pdb1', '6ct4.pdb1']:
+    for pdb in ["1qys.pdb1", "3ultA.pdb1", "6ct4.pdb1"]:
         structure_files.append(Path(pdb))
-    filtered_structures = cfds.filter_structures_by_blacklist(structure_files, blacklist_file)
+    filtered_structures = cfds.filter_structures_by_blacklist(
+        structure_files, blacklist_file
+    )
     assert len(structure_files) == 3, f"Expected 3 structures to be in the list"
-    assert len(filtered_structures) == 2, f"Expected 2 structures to be in the filtered list"
-    assert Path('1qys.pdb1') in filtered_structures, f"Expected 1qys to be in the list"
-    assert Path('6ct4.pdb1') in filtered_structures, f"Expected 6CT4 to be in the list"
-    assert Path('3qy1A.pdb1') not in filtered_structures,f"Expected 3qy1A not to be in the list"
+    assert (
+        len(filtered_structures) == 2
+    ), f"Expected 2 structures to be in the filtered list"
+    assert Path("1qys.pdb1") in filtered_structures, f"Expected 1qys to be in the list"
+    assert Path("6ct4.pdb1") in filtered_structures, f"Expected 6CT4 to be in the list"
+    assert (
+        Path("3ultA.pdb1") not in filtered_structures
+    ), f"Expected 3ultA not to be in the list"
