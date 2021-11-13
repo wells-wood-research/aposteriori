@@ -806,6 +806,8 @@ def create_frames_from_structure(
         Codec object with encoding instructions.
     voxels_as_gaussian: bool
         Whether to encode voxels as gaussians.
+    voxelise_all_states: bool
+        Whether to voxelise only the first state of the NMR structure (False) or all of them (True).
     """
     name = structure_path.name.split(".")[0]
     chain_dict: ChainDict = {}
@@ -1057,6 +1059,8 @@ def process_paths(
         Codec object with encoding instructions.
     voxels_as_gaussian: bool
         Whether to encode voxels as gaussians.
+    voxelise_all_states: bool
+        Whether to voxelise only the first state of the NMR structure (False) or all of them (True).
     """
 
     with mp.Manager() as manager:
