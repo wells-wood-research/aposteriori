@@ -150,6 +150,15 @@ from aposteriori.data_prep.create_frame_data_set import (
     default=True,
     help=("Whether to comrpess the dataset with gzip compression."),
 )
+@click.option(
+    "-vas",
+    "--voxelise_all_states",
+    type=bool,
+    default=False,
+    help=(
+        "Whether to voxelise only the first state of the NMR structure (False) or all of them (True)."
+    ),
+)
 def cli(
     structure_file_folder: str,
     output_folder: str,
@@ -168,6 +177,7 @@ def cli(
     voxels_as_gaussian: bool,
     blacklist_csv: str,
     compression_gzip: bool,
+    voxelise_all_states: bool,
 ):
     """Creates a dataset of voxelized amino acid frames.
 
@@ -217,7 +227,9 @@ def cli(
     # If a download file is specified, open the file and download
     if download_file and pathlib.Path(download_file).exists():
         structure_files: t.List[StrOrPath] = download_pdb_from_csv_file(
-            pathlib.Path(download_file)
+            pdb_csv_file=pathlib.Path(download_file),
+            pdb_outpath=pathlib.Path(output_folder),
+            verbosity=verbose,
         )
     else:
         # Extract all the PDBs in folder:
@@ -269,6 +281,7 @@ def cli(
         voxels_as_gaussian=voxels_as_gaussian,
         blacklist_csv=blacklist_csv,
         gzip_compression=compression_gzip,
+        voxelise_all_states=voxelise_all_states,
     )
     return
 
