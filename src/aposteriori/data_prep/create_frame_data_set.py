@@ -696,59 +696,19 @@ def create_residue_frame(
     return frame
 
 
-def create_frames_from_structure(
-    structure_path: pathlib.Path,
-    frame_edge_length: float,
-    voxels_per_side: int,
-    atom_filter_fn: t.Callable[[ampal.Atom], bool],
-    chain_filter_list: t.Optional[t.List[str]],
-    is_pdb_gzipped: bool,
-    verbosity: int,
-    encode_cb: bool,
-    codec: object,
-    voxels_as_gaussian: bool,
-) -> t.Tuple[str, ChainDict]:
-    """Creates residue frames for each residue in the structure.
-
-    Parameters
-    ----------
-    structure_path: pathlib.Path
-        Path to pdb file to be processed into frames
-    frame_edge_length: float
-        The length of the edges of the frame.
-    voxels_per_side: int
-        The number of voxels per edge that the cube of space will be converted into i.e.
-        the final cube will be `voxels_per_side`^3. This must be a odd, positive integer
-        so that the CA atom can be placed at the centre of the frame.
-    atom_filter_fn: ampal.Atom -> bool
-        A function used to preprocess structures to remove atoms that are not to be
-        included in the final structure. By default water and side chain atoms will be
-        removed.
-    chain_filter_list: t.Optional[t.List[str]]
-        Chains to be processed.
-    is_pdb_gzipped: bool
-        Indicates if structure files are gzipped or not.
-    verbosity: int
-        Level of logging sent to std out.
-    encode_cb: bool
-        Whether to encode the Cb at an average position in the frame. If
-        True, it will not be filtered by the `atom_filter_fn`.
-    codec: object
-        Codec object with encoding instructions.
-    voxels_as_gaussian: bool
-        Whether to encode voxels as gaussians.
-    """
-    name = structure_path.name.split(".")[0]
-    chain_dict: ChainDict = {}
-    if is_pdb_gzipped:
-        with gzip.open(str(structure_path), "rb") as inf:
-            assembly = ampal.load_pdb(inf.read().decode(), path=False)[0]
-    else:
-        assembly = ampal.load_pdb(str(structure_path))
-    # Deals with structures from NMR as ampal returns Container of Assemblies
-    if isinstance(assembly, ampal.AmpalContainer):
-        warnings.warn(f"Selecting the first state from the NMR structure {assembly.id}")
-        assembly = assembly[0]
+def voxelise_assembly(
+    assembly,
+    atom_filter_fn,
+    name,
+    chain_filter_list,
+    verbosity,
+    chain_dict,
+    frame_edge_length,
+    voxels_per_side,
+    encode_cb,
+    codec,
+    voxels_as_gaussian,
+):
     # Filters atoms not related to assembly:
     total_atoms = len(list(assembly.get_atoms()))
     for atom in assembly.get_atoms():
@@ -756,7 +716,7 @@ def create_frames_from_structure(
             del atom.parent.atoms[atom.res_label]
             del atom
     remaining_atoms = len(list(assembly.get_atoms()))
-    print(f"{name}: Filtered {total_atoms-remaining_atoms} of {total_atoms} atoms.")
+    print(f"{name}: Filtered {total_atoms - remaining_atoms} of {total_atoms} atoms.")
     for chain in assembly:
         if chain_filter_list:
             if chain.id.upper() not in chain_filter_list:
@@ -800,7 +760,102 @@ def create_frames_from_structure(
                     print(f"{name}:\t\tAdded residue {chain.id}:{residue.id}.")
         if verbosity > 0:
             print(f"{name}:\tFinished processing chain {chain.id}.")
+
     return (name, chain_dict)
+
+
+def create_frames_from_structure(
+    structure_path: pathlib.Path,
+    frame_edge_length: float,
+    voxels_per_side: int,
+    atom_filter_fn: t.Callable[[ampal.Atom], bool],
+    chain_filter_list: t.Optional[t.List[str]],
+    is_pdb_gzipped: bool,
+    verbosity: int,
+    encode_cb: bool,
+    codec: object,
+    voxels_as_gaussian: bool,
+    voxelise_all_states: bool,
+) -> t.Tuple[str, ChainDict]:
+    """Creates residue frames for each residue in the structure.
+
+    Parameters
+    ----------
+    structure_path: pathlib.Path
+        Path to pdb file to be processed into frames
+    frame_edge_length: float
+        The length of the edges of the frame.
+    voxels_per_side: int
+        The number of voxels per edge that the cube of space will be converted into i.e.
+        the final cube will be `voxels_per_side`^3. This must be a odd, positive integer
+        so that the CA atom can be placed at the centre of the frame.
+    atom_filter_fn: ampal.Atom -> bool
+        A function used to preprocess structures to remove atoms that are not to be
+        included in the final structure. By default water and side chain atoms will be
+        removed.
+    chain_filter_list: t.Optional[t.List[str]]
+        Chains to be processed.
+    is_pdb_gzipped: bool
+        Indicates if structure files are gzipped or not.
+    verbosity: int
+        Level of logging sent to std out.
+    encode_cb: bool
+        Whether to encode the Cb at an average position in the frame. If
+        True, it will not be filtered by the `atom_filter_fn`.
+    codec: object
+        Codec object with encoding instructions.
+    voxels_as_gaussian: bool
+        Whether to encode voxels as gaussians.
+    """
+    name = structure_path.name.split(".")[0]
+    chain_dict: ChainDict = {}
+    if is_pdb_gzipped:
+        with gzip.open(str(structure_path), "rb") as inf:
+            assembly = ampal.load_pdb(inf.read().decode(), path=False)
+    else:
+        assembly = ampal.load_pdb(str(structure_path))
+    # Deals with structures from NMR as ampal returns Container of Assemblies
+    if isinstance(assembly, ampal.AmpalContainer) and voxelise_all_states:
+        if verbosity > 1:
+            warnings.warn(f"Voxelising all states from the NMR structure {assembly.id}")
+        result = []
+        for i, curr_assembly in enumerate(assembly):
+            curr_result = voxelise_assembly(
+                curr_assembly,
+                atom_filter_fn,
+                name + f"_{i}",
+                chain_filter_list,
+                verbosity,
+                chain_dict,
+                frame_edge_length,
+                voxels_per_side,
+                encode_cb,
+                codec,
+                voxels_as_gaussian,
+            )
+            result.append(curr_result)
+    else:
+        if isinstance(assembly, ampal.AmpalContainer):
+            if verbosity > 1:
+                warnings.warn(
+                    f"Selecting the first state from the NMR structure {assembly.id}"
+                )
+            assembly = assembly[0]
+        result = voxelise_assembly(
+            assembly,
+            atom_filter_fn,
+            name,
+            chain_filter_list,
+            verbosity,
+            chain_dict,
+            frame_edge_length,
+            voxels_per_side,
+            encode_cb,
+            codec,
+            voxels_as_gaussian,
+        )
+
+    return result
 
 
 # }}}
@@ -841,6 +896,7 @@ def process_single_path(
     encode_cb: bool,
     codec: object,
     voxels_as_gaussian: bool,
+    voxelise_all_states: bool,
 ):
     """Processes a path and puts the results into a queue."""
     chain_filter_list: t.Optional[t.List[str]]
@@ -866,11 +922,15 @@ def process_single_path(
                 encode_cb,
                 codec,
                 voxels_as_gaussian=voxels_as_gaussian,
+                voxelise_all_states=voxelise_all_states,
             )
         except Exception as e:
             result = str(e)
         if isinstance(result, str):
             errors[str(structure_path)] = result
+        elif isinstance(result, list):
+            for curr_res in result:
+                result_queue.put(curr_res)
         else:
             result_queue.put(result)
 
@@ -963,6 +1023,7 @@ def process_paths(
     codec: object,
     voxels_as_gaussian: bool,
     gzip_compression: bool = True,
+    voxelise_all_states: bool = True,
 ):
     """Discretizes a list of structures and stores them in a HDF5 object.
 
@@ -1026,6 +1087,7 @@ def process_paths(
                     encode_cb,
                     codec,
                     voxels_as_gaussian,
+                    voxelise_all_states,
                 ),
             )
             for proc_i in range(processes)
@@ -1086,7 +1148,10 @@ def process_paths(
 
 
 def _select_pdb_chain(
-    pdb_path: pathlib.Path, chain: str, return_chain_path: bool = True
+    pdb_path: pathlib.Path,
+    chain: str,
+    verbosity: int,
+    return_chain_path: bool = True,
 ) -> (ampal.Assembly, pathlib.Path):
     """
     Select a chain from a pdb file. The chain will remove the original pdb file.
@@ -1110,11 +1175,12 @@ def _select_pdb_chain(
         Output path with chain
     """
     pdb_structure = ampal.load_pdb(pdb_path)
-    # Check if PDB structure is container and select assembly
-    if isinstance(pdb_structure, ampal.AmpalContainer):
-        warnings.warn(
-            f"Selecting the first state from the NMR structure {pdb_structure.id}"
-        )
+    # Check if PDB structure is container and select assembly:
+    if verbosity > 1:
+        if isinstance(pdb_structure, ampal.AmpalContainer):
+            warnings.warn(
+                f"Selecting the first state from the NMR structure {pdb_structure.id}"
+            )
         pdb_structure = pdb_structure[0]
 
     chain_pdb = pdb_structure[chain]
@@ -1139,7 +1205,8 @@ def _select_pdb_chain(
 
 def _fetch_pdb(
     pdb_code: str,
-    output_folder: pathlib.Path = PDB_PATH,
+    verbosity: int,
+    output_folder: pathlib.Path,
     pdb_request_url: str = PDB_REQUEST_URL,
     download_assembly: bool = True,
 ) -> pathlib.Path:
@@ -1186,7 +1253,7 @@ def _fetch_pdb(
     if len(pdb_code) == 5:
         # Extract chain from string:
         chain = pdb_code[-1]
-        output_path = _select_pdb_chain(output_path, chain)
+        output_path = _select_pdb_chain(output_path, chain, verbosity=verbosity)
 
     return output_path
 
@@ -1245,7 +1312,9 @@ def filter_structures_by_blacklist(
 
 
 def download_pdb_from_csv_file(
-    pdb_csv_file: pathlib.Path, pdb_outpath: pathlib.Path = PDB_PATH
+    pdb_csv_file: pathlib.Path,
+    verbosity: int,
+    pdb_outpath: pathlib.Path = PDB_PATH,
 ):
     """
     Dowloads PDB functional unit files of structures from a csv file.
@@ -1276,7 +1345,12 @@ def download_pdb_from_csv_file(
         pathlib.Path(pdb_outpath).mkdir(parents=True, exist_ok=True)
 
     structure_file_paths = [
-        _fetch_pdb(pdb_code, download_assembly=True, output_folder=pdb_outpath)
+        _fetch_pdb(
+            pdb_code,
+            download_assembly=True,
+            output_folder=pdb_outpath,
+            verbosity=verbosity,
+        )
         for pdb_code in pdb_list
     ]
 
@@ -1300,6 +1374,7 @@ def make_frame_dataset(
     voxels_as_gaussian: bool = False,
     blacklist_csv: pathlib.Path = None,
     gzip_compression: bool = True,
+    voxelise_all_states: bool = True,
 ) -> pathlib.Path:
     """Creates a dataset of voxelized amino acid frames.
 
@@ -1429,6 +1504,7 @@ def make_frame_dataset(
         codec=codec,
         voxels_as_gaussian=voxels_as_gaussian,
         gzip_compression=gzip_compression,
+        voxelise_all_states=voxelise_all_states,
     )
     return output_file_path
 
