@@ -1183,17 +1183,17 @@ def _select_pdb_chain(
     """
     pdb_structure = ampal.load_pdb(pdb_path)
     # Check if PDB structure is container and select assembly:
-    if verbosity > 1:
-        if isinstance(pdb_structure, ampal.AmpalContainer):
+    if isinstance(pdb_structure, ampal.AmpalContainer):
+        if verbosity > 1:
             warnings.warn(
                 f"Selecting the first state from the NMR structure {pdb_structure.id}"
             )
         pdb_structure = pdb_structure[0]
-
     chain_pdb = pdb_structure[chain]
-    warnings.warn(
-        f"ATTENTION: You selected chain {chain}, for PDB code {pdb_path}. We will replace the original PDB file with the selected chain. Remove the 5th letter of your PDB code if this is unwanted behaviour."
-    )
+    if verbosity > 1:
+        warnings.warn(
+            f"ATTENTION: You selected chain {chain}, for PDB code {pdb_path}. We will replace the original PDB file with the selected chain. Remove the 5th letter of your PDB code if this is unwanted behaviour."
+        )
     # Save chain to file:
     output_pdb_path = pathlib.Path(
         str(pdb_path.with_suffix("")) + chain + pdb_path.suffix
