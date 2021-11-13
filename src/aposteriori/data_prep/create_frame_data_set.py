@@ -14,6 +14,9 @@ import typing as t
 import urllib
 import warnings
 from dataclasses import dataclass
+from multiprocessing import Pool
+from itertools import repeat
+
 
 import ampal
 import ampal.geometry as geometry
@@ -1211,8 +1214,8 @@ def _fetch_pdb(
     pdb_code: str,
     verbosity: int,
     output_folder: pathlib.Path,
-    pdb_request_url: str = PDB_REQUEST_URL,
     download_assembly: bool = True,
+    pdb_request_url: str = PDB_REQUEST_URL,
 ) -> pathlib.Path:
     """
     Downloads a specific pdb file into a specific folder.
@@ -1318,7 +1321,8 @@ def filter_structures_by_blacklist(
 def download_pdb_from_csv_file(
     pdb_csv_file: pathlib.Path,
     verbosity: int,
-    pdb_outpath: pathlib.Path = PDB_PATH,
+    pdb_outpath: pathlib.Path,
+    workers: int,
 ):
     """
     Dowloads PDB functional unit files of structures from a csv file.
@@ -1348,15 +1352,18 @@ def download_pdb_from_csv_file(
     else:
         pathlib.Path(pdb_outpath).mkdir(parents=True, exist_ok=True)
 
-    structure_file_paths = [
-        _fetch_pdb(
-            pdb_code,
-            download_assembly=True,
-            output_folder=pdb_outpath,
-            verbosity=verbosity,
+    # Use multiprocessing to download .pdb files faster
+    with Pool(processes=workers) as p:
+        structure_file_paths = p.starmap(
+            _fetch_pdb,
+            zip(
+                pdb_list,
+                repeat(verbosity),
+                repeat(pdb_outpath),
+                repeat(True),
+            ),
         )
-        for pdb_code in pdb_list
-    ]
+        p.close()
 
     return structure_file_paths
 

@@ -66,7 +66,7 @@ Usage: make-frame-dataset [OPTIONS] STRUCTURE_FILE_FOLDER
   Python rather than through this CLI.
 
   The hdf5 object itself is like a Python dict. The structure is simple:
-
+  
     └─[pdb_code] Contains a number of subgroups, one for each chain.
       └─[chain_id] Contains a number of subgroups, one for each residue.
         └─[residue_id] voxels_per_side^3 array of ints, representing element number.
@@ -110,7 +110,7 @@ Options:
   -p, --processes INTEGER         Number of processes to be used to create the
                                   dataset. Default = 1.
 
-  -z, --gzipped                   If True, this flag indicates that the
+  -z, --is_pdb_gzipped            If True, this flag indicates that the
                                   structure files are gzipped. Default =
                                   False.
 
@@ -140,15 +140,27 @@ Options:
 
   -g, --voxels_as_gaussian BOOLEAN
                                   Boolean - whether to encode voxels as
-                                  gaussians (True) or (Voxels). The gaussian
-                                  representation uses the wanderwaal's radius
-                                  of each atom using the formula e^(-x^2)
-                                  where x is Vx - x)^2 + (Vy - y)^2) + (Vz -
-                                  z)^2)/ r^2 and  (Vx, Vy, Vz) is the position
-                                  of the voxel in space. (x, y, z) is the
-                                  position of the atom in space, r is the Van
-                                  der Waal’s radius of the atom. They are then
-                                  normalized to add up to 1.
+                                  gaussians (True) or voxels (False). The
+                                  gaussian representation uses the
+                                  Van der Waals radius of each atom using the
+                                  formula e^(-x^2) where x is Vx - x)^2 + (Vy
+                                  - y)^2) + (Vz - z)^2)/ r^2 and  (Vx, Vy, Vz)
+                                  is the position of the voxel in space. (x,
+                                  y, z) is the position of the atom in space,
+                                  r is the Van der Waals radius of the atom.
+                                  They are then normalized to add up to 1.
+
+  -b, --blacklist_csv PATH        Path to csv file with structures to be
+                                  removed.
+
+  -comp, --compression_gzip BOOLEAN
+                                  Whether to comrpess the dataset with gzip
+                                  compression.
+
+  -vas, --voxelise_all_states BOOLEAN
+                                  Whether to voxelise only the first state of
+                                  the NMR structure (False) or all of them
+                                  (True).
 
   --help                          Show this message and exit.
 
