@@ -231,7 +231,9 @@ def cli(
             pdb_outpath=pathlib.Path(output_folder),
             verbosity=verbose,
             workers=processes,
+            voxelise_all_states=voxelise_all_states,
         )
+        # TODO check if structure files is a flat list
     else:
         # Extract all the PDBs in folder:
         if pathlib.Path(structure_file_folder).exists():
