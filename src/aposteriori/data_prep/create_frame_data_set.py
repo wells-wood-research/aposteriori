@@ -715,6 +715,14 @@ def voxelise_assembly(
 ):
     if tag_rotamers:
         if isinstance(assembly, ampal.AmpalContainer):
+            # For each assembly:
+            for real_assembly in assembly:
+                # For each monomer in the assembly:
+                for monomer in real_assembly:
+                    if isinstance(monomer, ampal.Polypeptide):
+                        monomer.tag_sidechain_dihedrals()
+        if isinstance(assembly, ampal.Assembly):
+            # For each monomer in the assembly:
             for monomer in assembly:
                 if isinstance(monomer, ampal.Polypeptide):
                     monomer.tag_sidechain_dihedrals()
@@ -758,7 +766,7 @@ def voxelise_assembly(
                     voxels_as_gaussian=voxels_as_gaussian,
                 )
                 encoded_residue = encode_residue(residue.mol_code)
-                if residue.tags["rotamers"]:
+                if "rotamers" in list(residue.tags):
                     if any(v is None for v in residue.tags["rotamers"]):
                         rota = "NAN"
                     else:
@@ -877,6 +885,7 @@ def create_frames_from_structure(
             encode_cb,
             codec,
             voxels_as_gaussian,
+            tag_rotamers,
         )
 
     return result
@@ -1025,6 +1034,7 @@ def save_results(
                             compression="gzip" if gzip_compression else None,
                         )
                         res_dataset.attrs["label"] = res_result.label
+                        res_dataset.attrs["rotamers"] = res_result.rotamers
                         res_dataset.attrs[
                             "encoded_residue"
                         ] = res_result.encoded_residue

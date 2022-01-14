@@ -157,11 +157,19 @@ def test_make_frame_dataset():
 
     ampal_1ubq = ampal.load_pdb(str(test_file))
     if isinstance(ampal_1ubq, ampal.AmpalContainer):
+        for assembly in ampal_1ubq:
+            for monomer in assembly:
+                if isinstance(monomer, ampal.Polypeptide):
+                    monomer.tag_sidechain_dihedrals()
+    elif isinstance(ampal_1ubq, ampal.Polypeptide):
+        ampal_1ubq.tag_sidechain_dihedrals()
+    elif isinstance(ampal_1ubq, ampal.Assembly):
+        # For each monomer in the assembly:
         for monomer in ampal_1ubq:
             if isinstance(monomer, ampal.Polypeptide):
                 monomer.tag_sidechain_dihedrals()
-    elif isinstance(ampal_1ubq, ampal.Polypeptide):
-        ampal_1ubq.tag_sidechain_dihedrals()
+    else:
+        raise ValueError
 
     for atom in ampal_1ubq.get_atoms():
         if not cfds.default_atom_filter(atom):
@@ -192,9 +200,11 @@ def test_make_frame_dataset():
                     voxels_per_side=voxels_per_side,
                     encode_cb=False,
                     codec=codec,
-                    tag_rotamers=True
                 )
-                assert ampal_1ubq[n].tags["rotamers"] == dataset["1ubq"]["A"][residue_number].attrs["rotamers"] == test_frame[0].attrs["rotamers"], "Tags Rotamer mismatch"
+                rota = ""
+                for r in ampal_1ubq[0][n-1].tags["rotamers"]:
+                    rota += str(r)
+                assert rota == dataset["1ubq"]["A"][residue_number].attrs["rotamers"], f'Tags Rotamer mismatch found at position {n}: {dataset["1ubq"]["A"][residue_number].attrs["rotamers"]} but expected {rota}'
                 hdf5_array = dataset["1ubq"]["A"][residue_number][()]
                 npt.assert_array_equal(
                     hdf5_array,
