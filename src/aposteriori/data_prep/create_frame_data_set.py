@@ -41,7 +41,7 @@ class ResidueResult:
     encoded_residue: np.ndarray
     data: np.ndarray
     voxels_as_gaussian: bool
-
+    rotamers: str
 
 @dataclass
 class DatasetMetadata:
@@ -711,7 +711,16 @@ def voxelise_assembly(
     encode_cb,
     codec,
     voxels_as_gaussian,
+    tag_rotamers,
 ):
+    if tag_rotamers:
+        if isinstance(assembly, ampal.AmpalContainer):
+            for monomer in assembly:
+                if isinstance(monomer, ampal.Polypeptide):
+                    monomer.tag_sidechain_dihedrals()
+        elif isinstance(assembly, ampal.Polypeptide):
+            assembly.tag_sidechain_dihedrals()
+
     # Filters atoms not related to assembly:
     total_atoms = len(list(assembly.get_atoms()))
     for atom in assembly.get_atoms():
@@ -736,7 +745,7 @@ def voxelise_assembly(
         if verbosity > 0:
             print(f"{name}:\tProcessing chain {chain.id}...")
         chain_dict[chain.id] = []
-        # Loop through each residue, voxelis:
+        # Loop through each residue, voxels:
         for residue in chain:
             if isinstance(residue, ampal.Residue):
                 # Create voxelised frame:
@@ -749,6 +758,13 @@ def voxelise_assembly(
                     voxels_as_gaussian=voxels_as_gaussian,
                 )
                 encoded_residue = encode_residue(residue.mol_code)
+                if residue.tags["rotamers"]:
+                    if any(v is None for v in residue.tags["rotamers"]):
+                        rota = "NAN"
+                    else:
+                        rota = "".join(np.array(residue.tags["rotamers"], dtype=str).tolist())
+                else:
+                    rota = "NAN"
                 # Save results:
                 chain_dict[chain.id].append(
                     ResidueResult(
@@ -757,6 +773,7 @@ def voxelise_assembly(
                         encoded_residue=encoded_residue,
                         data=array,
                         voxels_as_gaussian=voxels_as_gaussian,
+                        rotamers=rota
                     )
                 )
                 if verbosity > 1:
@@ -779,6 +796,7 @@ def create_frames_from_structure(
     codec: object,
     voxels_as_gaussian: bool,
     voxelise_all_states: bool,
+    tag_rotamers: bool
 ) -> t.Tuple[str, ChainDict]:
     """Creates residue frames for each residue in the structure.
 
@@ -837,6 +855,7 @@ def create_frames_from_structure(
                 encode_cb,
                 codec,
                 voxels_as_gaussian,
+                tag_rotamers,
             )
             result.append(curr_result)
     else:
@@ -902,6 +921,7 @@ def process_single_path(
     codec: object,
     voxels_as_gaussian: bool,
     voxelise_all_states: bool,
+    tag_rotamers: bool,
 ):
     """Processes a path and puts the results into a queue."""
     chain_filter_list: t.Optional[t.List[str]]
@@ -928,6 +948,7 @@ def process_single_path(
                 codec,
                 voxels_as_gaussian=voxels_as_gaussian,
                 voxelise_all_states=voxelise_all_states,
+                tag_rotamers=tag_rotamers
             )
         except Exception as e:
             result = str(e)
@@ -1029,6 +1050,7 @@ def process_paths(
     voxels_as_gaussian: bool,
     gzip_compression: bool = True,
     voxelise_all_states: bool = True,
+    tag_rotamers: bool = False,
 ):
     """Discretizes a list of structures and stores them in a HDF5 object.
 
@@ -1095,6 +1117,7 @@ def process_paths(
                     codec,
                     voxels_as_gaussian,
                     voxelise_all_states,
+                    tag_rotamers
                 ),
             )
             for proc_i in range(processes)
@@ -1440,6 +1463,7 @@ def make_frame_dataset(
     blacklist_csv: pathlib.Path = None,
     gzip_compression: bool = True,
     voxelise_all_states: bool = True,
+    tag_rotamers: bool = False,
 ) -> pathlib.Path:
     """Creates a dataset of voxelized amino acid frames.
 
@@ -1570,6 +1594,7 @@ def make_frame_dataset(
         voxels_as_gaussian=voxels_as_gaussian,
         gzip_compression=gzip_compression,
         voxelise_all_states=voxelise_all_states,
+        tag_rotamers=tag_rotamers,
     )
     return output_file_path
 

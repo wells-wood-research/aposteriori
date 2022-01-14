@@ -159,6 +159,15 @@ from aposteriori.data_prep.create_frame_data_set import (
         "Whether to voxelise only the first state of the NMR structure (False) or all of them (True)."
     ),
 )
+@click.option(
+    "-rot",
+    "--tag_rotamers",
+    type=bool,
+    default=False,
+    help=(
+        "Whether to tag rotamer information to the frame (True) or not (False)."
+    ),
+)
 def cli(
     structure_file_folder: str,
     output_folder: str,
@@ -178,6 +187,7 @@ def cli(
     blacklist_csv: str,
     compression_gzip: bool,
     voxelise_all_states: bool,
+    tag_rotamers: bool,
 ):
     """Creates a dataset of voxelized amino acid frames.
 
@@ -285,6 +295,7 @@ def cli(
         blacklist_csv=blacklist_csv,
         gzip_compression=compression_gzip,
         voxelise_all_states=voxelise_all_states,
+        tag_rotamers=tag_rotamers,
     )
     return
 
