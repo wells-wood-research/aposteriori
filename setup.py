@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setup(
     name="aposteriori",
-    version="2.0.0",
+    version="2.1.0",
     author="Wells Wood Research Group",
     author_email="chris.wood@ed.ac.uk",
     description="A library for the voxelization of protein structures for protein design.",
@@ -17,7 +17,7 @@ setup(
         "License :: OSI Approved :: MIT License",
         "Operating System :: OS Independent",
     ],
-    python_requires=">=3.7",
+    python_requires=">=3.8",
     packages=find_packages("src"),
     package_dir={"": "src"},
 )
