@@ -676,10 +676,7 @@ def create_residue_frame(
                 atom_idx=atom_idx,
             )
             if "Q" in codec.atomic_labels and res_charge != 0:
-                print(res_charge)
                 gaussian_atom = gaussian_matrix[:, :, :, atom_idx] * float(res_charge)
-                print(np.min(gaussian_atom))
-                print(np.max(gaussian_atom))
                 # Add at position:
                 frame = add_gaussian_at_position(
                     main_matrix=frame,
@@ -688,9 +685,6 @@ def create_residue_frame(
                     atom_idx=5,
                     normalize=False,
                 )
-                print(frame.shape)
-                print(np.min(frame))
-                print(np.max(frame))
         else:
             # Encode atom as voxel:
             frame[indices] = Codec.encode_atom(codec, atom.res_label)
