@@ -1,17 +1,12 @@
-import click
 import pathlib
 import sys
 import typing as t
 import warnings
 
-from aposteriori.data_prep.create_frame_data_set import (
-    Codec,
-    make_frame_dataset,
-    StrOrPath,
-    default_atom_filter,
-    download_pdb_from_csv_file,
-    filter_structures_by_blacklist,
-)
+import click
+
+from aposteriori.data_prep.create_frame_data_set import (Codec, StrOrPath, default_atom_filter, download_pdb_from_csv_file,
+                                                         make_frame_dataset)
 
 
 # {{{ CLI
@@ -113,7 +108,7 @@ from aposteriori.data_prep.create_frame_data_set import (
 @click.option(
     "-ae",
     "--atom_encoder",
-    type=click.Choice(["CNO", "CNOCB", "CNOCBCA"]),
+    type=click.Choice(["CNO", "CNOCB", "CNOCBCA", "CNOCBCAQ"]),
     default="CNO",
     required=True,
     help=(
@@ -164,9 +159,7 @@ from aposteriori.data_prep.create_frame_data_set import (
     "--tag_rotamers",
     type=bool,
     default=False,
-    help=(
-        "Whether to tag rotamer information to the frame (True) or not (False)."
-    ),
+    help=("Whether to tag rotamer information to the frame (True) or not (False)."),
 )
 def cli(
     structure_file_folder: str,
@@ -271,12 +264,15 @@ def cli(
         codec = Codec.CNOCB()
     elif atom_encoder == "CNOCBCA":
         codec = Codec.CNOCBCA()
+    elif atom_encoder == "CNOCBCAQ":
+        codec = Codec.CNOCBCAQ()
     else:
         assert atom_encoder in [
             "CNO",
             "CNOCB",
             "CNOCBCA",
-        ], f"Expected encoder to be CNO, CNOCB, CNOCBCA but got {atom_encoder}"
+            "CNOCBCAQ",
+        ], f"Expected encoder to be CNO, CNOCB, CNOCBCA, CNOCBCAQ but got {atom_encoder}"
 
     make_frame_dataset(
         structure_files=structure_files,
