@@ -21,7 +21,7 @@ import ampal
 import ampal.geometry as geometry
 import h5py
 import numpy as np
-from ampal.amino_acids import residue_charge, standard_amino_acids
+from ampal.amino_acids import polarity_Zimmerman , standard_amino_acids
 
 from aposteriori.config import (
     ATOM_VANDERWAAL_RADII,
@@ -614,7 +614,9 @@ def create_residue_frame(
     voxel_edge_length = frame_edge_length / voxels_per_side
     assembly = residue.parent.parent
     chain = residue.parent
-    res_charge = residue_charge[residue.mol_letter]
+    # res_charge = residue_charge[residue.mol_letter]
+    res_charge = polarity_Zimmerman[residue.mol_letter]
+    res_charge = -1 if res_charge < 20 else 1
 
     align_to_residue_plane(residue)
     # Create a Cb atom at avg postion:
