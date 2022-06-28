@@ -615,7 +615,10 @@ def create_residue_frame(
     assembly = residue.parent.parent
     chain = residue.parent
     # res_charge = residue_charge[residue.mol_letter]
-    res_charge = polarity_Zimmerman[residue.mol_letter]
+    if residue.mol_letter in standard_amino_acids.keys():
+        res_charge = 0 if polarity_Zimmerman[residue.mol_letter] < 20 else 1
+    else:
+        res_charge = 0
     res_charge = -1 if res_charge < 20 else 1
 
     align_to_residue_plane(residue)
