@@ -108,7 +108,7 @@ from aposteriori.data_prep.create_frame_data_set import (Codec, StrOrPath, defau
 @click.option(
     "-ae",
     "--atom_encoder",
-    type=click.Choice(["CNO", "CNOCB", "CNOCBCA", "CNOCBCAQ"]),
+    type=click.Choice(["CNO", "CNOCB", "CNOCBCA", "CNOCBCAQ", "CNOCBCAP"]),
     default="CNO",
     required=True,
     help=(
