@@ -266,13 +266,16 @@ def cli(
         codec = Codec.CNOCBCA()
     elif atom_encoder == "CNOCBCAQ":
         codec = Codec.CNOCBCAQ()
+    elif atom_encoder == "CNOCBCAP":
+        codec = Codec.CNOCBCAP()
     else:
         assert atom_encoder in [
             "CNO",
             "CNOCB",
             "CNOCBCA",
             "CNOCBCAQ",
-        ], f"Expected encoder to be CNO, CNOCB, CNOCBCA, CNOCBCAQ but got {atom_encoder}"
+            "CNOCBCAP",
+        ], f"Expected encoder to be CNO, CNOCB, CNOCBCA, CNOCBCAQ, CNOCBCAP, but got {atom_encoder}"
 
     make_frame_dataset(
         structure_files=structure_files,

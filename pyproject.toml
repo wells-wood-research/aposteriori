@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "aposteriori"
-version = "2.1.0"
+version = "2.2.0"
 description = "Protein Structures Voxelisation for Deep Learning"
 authors = ["Leonardo Castorina <leonardo.castorina98@gmail.com>"]
 
