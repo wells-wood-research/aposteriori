@@ -21,7 +21,7 @@ import ampal
 import ampal.geometry as geometry
 import h5py
 import numpy as np
-from ampal.amino_acids import polarity_Zimmerman , standard_amino_acids
+from ampal.amino_acids import residue_charge, polarity_Zimmerman, standard_amino_acids
 
 from aposteriori.config import (
     ATOM_VANDERWAAL_RADII,
@@ -106,6 +106,10 @@ class Codec:
     @classmethod
     def CNOCBCAQ(cls):
         return cls(["C", "N", "O", "CB", "CA", "Q"])
+
+    @classmethod
+    def CNOCBCAP(cls):
+        return cls(["C", "N", "O", "CB", "CA", "P"])
 
     def encode_atom(self, atom_label: str) -> np.ndarray:
         """
@@ -489,7 +493,7 @@ def add_gaussian_at_position(
     atom_coord: t.Tuple[int, int, int],
     atom_idx: int,
     atomic_center: t.Tuple[int, int, int] = (1, 1, 1),
-    normalize: bool = True
+    normalize: bool = True,
 ) -> np.ndarray:
     """
     Adds a 3D array (of a gaussian atom) to a specific coordinate of a frame.
@@ -614,12 +618,14 @@ def create_residue_frame(
     voxel_edge_length = frame_edge_length / voxels_per_side
     assembly = residue.parent.parent
     chain = residue.parent
-    # res_charge = residue_charge[residue.mol_letter]
-    if residue.mol_letter in standard_amino_acids.keys():
-        res_charge = 0 if polarity_Zimmerman[residue.mol_letter] < 20 else 1
-    else:
-        res_charge = 0
-    res_charge = -1 if res_charge < 20 else 1
+    if "P" in codec.atomic_labels:
+        if residue.mol_letter in standard_amino_acids.keys():
+            res_property = -1 if polarity_Zimmerman[residue.mol_letter] < 20 else 1
+        else:
+            res_property = 0
+        # res_property = -1 if res_property < 20 else 1
+    elif "Q" in codec.atomic_labels:
+        res_property = residue_charge[residue.mol_letter]
 
     align_to_residue_plane(residue)
     # Create a Cb atom at avg postion:
@@ -680,8 +686,12 @@ def create_residue_frame(
                 atom_coord=indices,
                 atom_idx=atom_idx,
             )
-            if "Q" in codec.atomic_labels and res_charge != 0:
-                gaussian_atom = gaussian_matrix[:, :, :, atom_idx] * float(res_charge)
+            if (
+                "Q" in codec.atomic_labels
+                or "P" in codec.atomic_labels
+                and res_property != 0
+            ):
+                gaussian_atom = gaussian_matrix[:, :, :, atom_idx] * float(res_property)
                 # Add at position:
                 frame = add_gaussian_at_position(
                     main_matrix=frame,
@@ -693,8 +703,12 @@ def create_residue_frame(
         else:
             # Encode atom as voxel:
             frame[indices] = Codec.encode_atom(codec, atom.res_label)
-            if "Q" in codec.atomic_labels and res_charge != 0:
-                frame[indices] = res_charge
+            if (
+                "Q" in codec.atomic_labels
+                or "P" in codec.atomic_labels
+                and res_property != 0
+            ):
+                frame[indices] = res_property
     centre = voxels_per_side // 2
     # Check whether central atom is C:
     if "CA" in codec.atomic_labels:
