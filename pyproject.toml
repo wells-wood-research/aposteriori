@@ -2,7 +2,7 @@
 name = "aposteriori"
 version = "2.1.0"
 description = "Protein Structures Voxelisation for Deep Learning"
-authors = ["Leonardo V. Castorina, Christopher W. Wood, Wells Wood Research Group, Universityof Edinburgh"]
+authors = ["Leonardo V. Castorina, Christopher W. Wood, Wells Wood Research Group, University of Edinburgh"]
 
 [tool.poetry.dependencies]
 python = "^3.8"
