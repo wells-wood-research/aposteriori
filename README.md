@@ -220,33 +220,41 @@ If everything went well, you should be seeing the number of structures that
 
 ## Development
 
-The easiest way to install a development version of `aposteriori` is using
-[Poetry](https://python-poetry.org):
+The easiest way to install a development version of `aposteriori` is using Conda:
 
-```sh
+
+### Conda and Poetry
+
+Create the environment:
+
+```shell
+conda create -n aposteriori python=3.8
+```
+
+Activate it and clone the repository:
+
+```shell
+conda activate aposteriori
 git clone https://github.com/wells-wood-research/aposteriori.git
 cd aposteriori/
+```
+
+Install poetry:
+
+```shell
+conda install poetry
+```
+
+Install dependencies:
+
+```sh
 poetry install
 ```
 
-In case you get an error about Python Versions (eg. if your python version is >3.7), we recommend you use [PyEnv](https://github.com/pyenv/pyenv) to install a separate version of Python alonside your main one. Then run:  
+Install aposteriori:
 
-```sh
-pyenv install 3.7.0
-pyenv local 3.7.0
-```
-
-If you are still having problems switching versions, (eg. you run the previous
- program but running `python -V` shows another version of Python.), try running
-
-```sh
-eval "$(pyenv init -)"
-```
-
-if Poetry doesn't pick up on the correct version of Python from PyEnv, run
-
-```sh
-poetry env use python3.7
+```shell
+pip install .
 ```
 
 You can then use either `poetry shell` to activate the development environment or use
@@ -262,3 +270,20 @@ Make sure you test your install:
 poetry run pytest tests/
 ```
 
+
+### Conda and Pip
+
+Alternatively you can install the repository with pip:
+
+
+```shell
+git clone https://github.com/wells-wood-research/aposteriori.git
+cd aposteriori/
+pip install -r requirements.txt
+```
+
+Install aposteriori:
+
+```shell
+pip install .
+```
