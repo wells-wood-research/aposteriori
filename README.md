@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="logo.png"><br>
+  <img src="img/logo.png"><br>
   <h3>Protein Structures Voxelisation for Deep Learning</h3><br>
 </div>
 
@@ -7,6 +7,9 @@
 
 [aposteriori](https://github.com/wells-wood-research/aposteriori) is a library for the voxelization of protein structures for protein design. It uses conventional PDB files to create fixed discretized areas of space called "frames". The atoms belonging to the side-chain of the residues are removed so to allow a Deep Learning classifier to determine the identity of the frames based solely on the protein backbone structure. 
 
+<div align="center">
+  <img src="img/voxelisation.png"><br>
+</div>
 
 ## Installation
 
@@ -84,6 +87,7 @@ Usage: make-frame-dataset [OPTIONS] STRUCTURE_FILE_FOLDER
   So hdf5['1ctf']['A']['58'] would be an array for the voxelized.
 
 Options:
+Options:
   -o, --output-folder PATH        Path to folder where output will be written.
                                   Default = `.`
 
@@ -142,12 +146,12 @@ Options:
                                   Boolean - whether to encode voxels as
                                   gaussians (True) or voxels (False). The
                                   gaussian representation uses the
-                                  Van der Waals radius of each atom using the
+                                  wanderwaal's radius of each atom using the
                                   formula e^(-x^2) where x is Vx - x)^2 + (Vy
                                   - y)^2) + (Vz - z)^2)/ r^2 and  (Vx, Vy, Vz)
                                   is the position of the voxel in space. (x,
                                   y, z) is the position of the atom in space,
-                                  r is the Van der Waals radius of the atom.
+                                  r is the Van der Waal’s radius of the atom.
                                   They are then normalized to add up to 1.
 
   -b, --blacklist_csv PATH        Path to csv file with structures to be
@@ -161,6 +165,9 @@ Options:
                                   Whether to voxelise only the first state of
                                   the NMR structure (False) or all of them
                                   (True).
+
+  -rot, --tag_rotamers BOOLEAN    Whether to tag rotamer information to the
+                                  frame (True) or not (False).
 
   --help                          Show this message and exit.
 
