@@ -1,33 +1,25 @@
 [tool.poetry]
 name = "aposteriori"
 version = "2.1.0"
-description = "DNN based protein design."
-authors = ["Wells Wood Lab, University of Edinburgh"]
-license = "MIT"
+description = "Protein Structures Voxelisation for Deep Learning"
+authors = ["Leonardo V. Castorina, Christopher W. Wood, Wells Wood Research Group, Universityof Edinburgh"]
 
 [tool.poetry.dependencies]
-python = "~3.7"
-ampal = "^1.4.0"
-numpy = "^1.21.0"
-scikit-learn = "^0.22.2"
-matplotlib = "^3.2.1"
-mypy = "^0.770"
-click = "^7.1.1"
-h5py = "^2.10.0"
+python = "^3.8"
+AMPAL = "^1.4.0"
+click = "^8.0.3"
+numpy = "^1.22.1"
+h5py = "^3.6.0"
+hypothesis = "^6.36.0"
+black = "^21.12b0"
 attr = "^0.3.1"
+pytest = "^6.2.5"
 
 [tool.poetry.dev-dependencies]
-black = "^19.10b0"
-flake8 = "^3.7.9"
-pytest = "^5.4.1"
-ipython = "^7.31.1"
-jupyter = "^1.0.0"
-mypy = "^0.770"
-hypothesis = "^5.8.0"
 
 [tool.poetry.scripts]
 make-frame-dataset = "aposteriori.data_prep.cli:cli"
 
 [build-system]
-requires = ["poetry>=1.0"]
-build-backend = "poetry.masonry.api"
+requires = ["poetry-core>=1.0.0"]
+build-backend = "poetry.core.masonry.api"
