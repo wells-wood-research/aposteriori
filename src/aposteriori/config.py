@@ -12,14 +12,20 @@ ATOM_COLORS = {
     0: ELEMENT_DATA['C']['CPK'],  # Carbon
     1: ELEMENT_DATA['N']['CPK'],  # Nitrogen
     2: ELEMENT_DATA['O']['CPK'],  # Oxygen
-    3: "orange",  # +1
+    3: ELEMENT_DATA['S']['CPK'],  # Sulfur
     4: "green"  # +2
 }
 ATOM_VANDERWAAL_RADII = {
     # Atomic number : Radius
-    0: 0.7,  # Carbon
-    1: 0.65,  # Nitrogen
-    2: 0.6,  # Oxygen
+    "C": 0.7,  # Carbon
+    "N": 0.65,  # Nitrogen
+    "O": 0.6,  # Oxygen
+    "CA": 0.7, # Alpha-carbon
+    "CB": 0.7, # Beta-carbon
+    "CS": 0.7, # Side chain carbon
+    "NS": 0.65, # Side chain nitrogen
+    "OS": 0.6, # Side chain oxygen
+    "SS": 0.75, # Side chain sulphur
 }
 PDB_PATH = DATA_FOLDER / "pdb"
 PDB_PATH.mkdir(parents=True, exist_ok=True)

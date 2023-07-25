@@ -8,10 +8,12 @@ from aposteriori.data_prep.create_frame_data_set import (
     Codec,
     make_frame_dataset,
     StrOrPath,
+    organic_cofactors,
     default_atom_filter,
     download_pdb_from_csv_file,
     filter_structures_by_blacklist,
 )
+
 
 
 # {{{ CLI
@@ -71,6 +73,26 @@ from aposteriori.data_prep.create_frame_data_set import (
     ),
 )
 @click.option(
+    "-keep_side_chain",
+    "--keep_side_chain_portion",
+    type=float,
+    default=0,
+    help=(
+        "Determines the percentage of residues for which the side chains are kept. By default, no side-chain information is kept (Value is 0)"
+        "The value should be set between 0 and 1"
+    ),
+)
+
+@click.option(
+    "--cfile",
+    default="",
+    type=click.Path(),
+    help=(
+        "Path to a Pieces format file used to filter the dataset to specific chains in"
+        "specific files. All other PDB files included in the input will be ignored."
+    ),
+)
+@click.option(
     "-p",
     "--processes",
     type=int,
@@ -110,10 +132,12 @@ from aposteriori.data_prep.create_frame_data_set import (
         "Encode the Cb at an average position (-0.741287356, -0.53937931, -1.224287356) in the aligned frame, even for Glycine residues. Default = True"
     ),
 )
+
+
 @click.option(
     "-ae",
     "--atom_encoder",
-    type=click.Choice(["CNO", "CNOCB", "CNOCBCA"]),
+    type=click.Choice(["CNO", "CNOCB", "CNOCBCA","BackSideOrg","BackCBSideOrg"]),
     default="CNO",
     required=True,
     help=(
@@ -159,6 +183,8 @@ from aposteriori.data_prep.create_frame_data_set import (
         "Whether to voxelise only the first state of the NMR structure (False) or all of them (True)."
     ),
 )
+
+
 def cli(
     structure_file_folder: str,
     output_folder: str,
@@ -166,7 +192,9 @@ def cli(
     extension: str,
     pieces_filter_file: str,
     frame_edge_length: float,
+    cfile: str,
     voxels_per_side: int,
+    keep_side_chain_portion: float,
     processes: int,
     is_pdb_gzipped: bool,
     recursive: bool,
@@ -261,12 +289,19 @@ def cli(
         codec = Codec.CNOCB()
     elif atom_encoder == "CNOCBCA":
         codec = Codec.CNOCBCA()
+    elif atom_encoder == "BackSideOrg":
+        codec = Codec.BackSideOrg()
+    elif atom_encoder == "BackCBSideOrg":
+        codec = Codec.BackCBSideOrg()
+
     else:
         assert atom_encoder in [
             "CNO",
             "CNOCB",
             "CNOCBCA",
-        ], f"Expected encoder to be CNO, CNOCB, CNOCBCA but got {atom_encoder}"
+            "BackSideOrg",
+            "BackCBSideOrg",
+        ], f"Expected encoder to be CNO, CNOCB, CNOCBCA, BackSideOrg or BackCBSideOrg but got {atom_encoder}"
 
     make_frame_dataset(
         structure_files=structure_files,
@@ -274,6 +309,8 @@ def cli(
         name=name,
         frame_edge_length=frame_edge_length,
         voxels_per_side=voxels_per_side,
+        keep_side_chain_portion=keep_side_chain_portion,
+        cfile=cfile,
         codec=codec,
         atom_filter_fn=default_atom_filter,
         pieces_filter_file=pieces_filter_file,
@@ -284,10 +321,8 @@ def cli(
         voxels_as_gaussian=voxels_as_gaussian,
         blacklist_csv=blacklist_csv,
         gzip_compression=compression_gzip,
-        voxelise_all_states=voxelise_all_states,
-    )
-    return
-
+        voxelise_all_states=voxelise_all_states,       
+        )
 
 # }}}
 
