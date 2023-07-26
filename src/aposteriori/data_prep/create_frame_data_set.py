@@ -108,7 +108,7 @@ class Codec:
         return cls(["C", "N", "O", "CB"])
 
     @classmethod
-    def CNOCBCA(cls):
+    def CNOCACB(cls):
         return cls(["C", "N", "O", "CA", "CB"])
 
     @classmethod
@@ -693,10 +693,6 @@ def create_residue_frame(
         (voxels_per_side, voxels_per_side, voxels_per_side, codec.encoder_length),
     )
 
-    #Encode the residue information separately
-
-    resinfo = np.zeros(
-        (voxels_per_side, voxels_per_side, voxels_per_side, 2),
     )
 
     # Change frame type to float if gaussian else use bool:
@@ -756,10 +752,7 @@ def create_residue_frame(
         else:
             # Encode atom as voxel:
             frame[indices] = Codec.encode_atom(codec, atom.res_label)
-         #   if atom_filter_fn(atom) == keep_sidechains(atom) and atom.res_label == "CB":
-          #      if (atom.parent.id) in rand_side_chain:
-           #         frame[indices][5] = True
-            #Remove side chains from the residue of interest
+            #Remove side chains from the residue that is being voxelised.
             if atom_filter_fn(atom) == keep_sidechains(atom) and res.mol_code == residue.mol_code:
                 for index in range(5, getattr(codec,"encoder_length")):
                     if frame[indices][index] == True:
@@ -807,61 +800,52 @@ def voxelise_assembly(
     codec,
     voxels_as_gaussian,
 ):
-     
-    # Filters atoms not related to assembly:
 
-    assembly_copied=copy.deepcopy(assembly)
+    total_atoms = len(list(assembly))
+    
+    #If keep_side_chains atom filter chosen, keep side chain atoms. Also, if organic_cofactors are chosen, keep them for now. Water molecules will be removed.
 
-    total_atoms = len(list(assembly_copied.get_atoms()))
-
-    for atom in assembly_copied.get_atoms():
-     #   if atom_filter_fn(atom)==keep_sidechains(atom) and atom.res_label == "CB":
-      #      atom.res_label = "CBeta"
-     #       atom.parent.atoms["CBeta"]=atom.parent.atoms.pop("CB")
-      #      print(atom.parent.atoms)
+    for atom in assembly.get_atoms():
         if not atom_filter_fn(atom) and not organic_cofactors(atom, cfile):
             del atom.parent.atoms[atom.res_label]           
             del atom
 
-    remaining_atoms = len(list(assembly_copied.get_atoms()))
+    remaining_atoms = len(list(assembly.get_atoms()))
+     print(f"{name}: Filtered {total_atoms - remaining_atoms} of {total_atoms} atoms.")
+     
+    #Get the residue ids for keeping random side-chains 
 
- #   print(f"{name}: Filtered {total_atoms - remaining_atoms} of {total_atoms} atoms.")
-
- #   res_index = (residue_number_indexing(assembly_copied))
-   
- #   global rand_side_chain
+    res_index = (residue_number_indexing(assembly))
     rand_side_chain = rnd.sample(range(len(res_index)), int(len(res_index)*keep_side_chain_portion))
 
-    for atom in assembly_copied.get_atoms():
+    for atom in assembly.get_atoms():
         if (atom.parent.id) not in rand_side_chain:
+        #Remove side chains if the side chains are not in random selection.
             if not default_atom_filter(atom) and not organic_cofactors(atom, cfile):
                 del atom.parent.atoms[atom.res_label]
                 del atom
-        elif isinstance (atom.parent, ampal.Ligand):
+        elif isinstance (atom.parent, ampal.Ligand): 
+        #If some organic molecules ended up in the random choice and if they are not of interest, remove them.
             if not atom_filter_fn(atom) and not organic_cofactors(atom, cfile):
                 del atom.parent.atoms[atom.res_label]
                 del atom
-
-  #  remaining_atoms = len(list(assembly_copied.get_atoms()))
- #   print(f"{name}: Filtered {total_atoms - remaining_atoms} of {total_atoms} atoms.")
-
-   # remaining_atoms = len(list(assembly_copied.get_atoms()))
-   # print(remaining_atoms)
-
-  #  print(f"{name}: Filtered {total_atoms - remaining_atoms} of {total_atoms} atoms.")
-
-    for chain in assembly_copied:
-        if not isinstance(chain, ampal.Polypeptide):
-            continue
-        for residue in chain:
-            encode_cb_prevox(residue)     
     
-    remaining_atoms = len(list(assembly_copied.get_atoms()))
+    #Encode the cb vector for all the residues before the voxelisation begins.
+    if encode_cb:
+    	for chain in assembly:
+        	if not isinstance(chain, ampal.Polypeptide):
+            	continue
+        	for residue in chain:
+            		encode_cb_prevox(residue)     
+    
+    remaining_atoms = len(list(assembly.get_atoms()))
+    
+    #A secondary checkpoint on how many atoms are left after side-chain keeping, CB addition etc.
     print(remaining_atoms)
 
     print(f"{name}: Filtered {total_atoms - remaining_atoms} of {total_atoms} atoms.")
 
-    for chain in assembly_copied:        
+    for chain in assembly:        
         if chain_filter_list:
             if chain.id.upper() not in chain_filter_list:
                 if verbosity > 0:
@@ -1070,6 +1054,7 @@ def keep_sidechains(atom: ampal.Atom) -> bool:
         return False        
     
 def residue_number_indexing(assembly:ampal.Assembly):
+    """Re-numbers the residues on the protein, so that side-chain portions can be kept later on"""
     count=0
     residue_number=[]
     ligands=assembly.get_ligands()

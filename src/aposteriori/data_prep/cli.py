@@ -88,8 +88,7 @@ from aposteriori.data_prep.create_frame_data_set import (
     default="",
     type=click.Path(),
     help=(
-        "Path to a Pieces format file used to filter the dataset to specific chains in"
-        "specific files. All other PDB files included in the input will be ignored."
+        "Path to a .csv or a .txt file that contains organic molecules (cofactors etc.) to be considered during frame creation"
     ),
 )
 @click.option(
@@ -137,11 +136,11 @@ from aposteriori.data_prep.create_frame_data_set import (
 @click.option(
     "-ae",
     "--atom_encoder",
-    type=click.Choice(["CNO", "CNOCB", "CNOCBCA","BackSideOrg","BackCBSideOrg"]),
+    type=click.Choice(["CNO", "CNOCB", "CNOCACB","BackSideOrg","BackCBSideOrg"]),
     default="CNO",
     required=True,
     help=(
-        "Encodes atoms in different channels, depending on atom types. Default is CNO, other options are ´CNOCB´ and `CNOCBCA` to encode the Cb or Cb and Ca in different channels respectively."
+        "Encodes atoms in different channels, depending on atom types. Default is CNO, other options are ´CNOCB´,`CNOCACB`, `BackSideOrg` `BackCBSideOrg`. If the user wishes to keep only the backbone atoms of polypeptides and encode CB and CA as carbon atoms, they can proceed with CNO encoding. If the user wishes to put Cb or Cb and Ca in different channels, then they can use CNOCB and CNOCACB respectively. If the user wishes to include side-chain atoms, or other organic molecule atoms, they can use BackSideOrg (if they wish to consider CB as a side-chain atom) or BackCBSideOrg(if they wish to consider CB in a separate channel)."
     ),
 )
 @click.option(
@@ -287,8 +286,8 @@ def cli(
         codec = Codec.CNO()
     elif atom_encoder == "CNOCB":
         codec = Codec.CNOCB()
-    elif atom_encoder == "CNOCBCA":
-        codec = Codec.CNOCBCA()
+    elif atom_encoder == "CNOCACB":
+        codec = Codec.CNOCACB()
     elif atom_encoder == "BackSideOrg":
         codec = Codec.BackSideOrg()
     elif atom_encoder == "BackCBSideOrg":
@@ -298,10 +297,10 @@ def cli(
         assert atom_encoder in [
             "CNO",
             "CNOCB",
-            "CNOCBCA",
+            "CNOCACB",
             "BackSideOrg",
             "BackCBSideOrg",
-        ], f"Expected encoder to be CNO, CNOCB, CNOCBCA, BackSideOrg or BackCBSideOrg but got {atom_encoder}"
+        ], f"Expected encoder to be CNO, CNOCB, CNOCACB, BackSideOrg or BackCBSideOrg but got {atom_encoder}"
 
     make_frame_dataset(
         structure_files=structure_files,
