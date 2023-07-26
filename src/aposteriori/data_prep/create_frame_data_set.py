@@ -36,7 +36,6 @@ from aposteriori.config import (
     PDB_REQUEST_URL,
     UNCOMMON_RESIDUE_DICT,
 )
-from scipy import rand
 
 # {{{ Types
 @dataclass
@@ -184,7 +183,7 @@ class Codec:
 
         Returns
         -------
-        atom_encoding: np.ndarrayk
+        atom_encoding: np.ndarray
             Boolean array with atom encoding of shape (3, 3, 3, encoder_length,)
 
         """
