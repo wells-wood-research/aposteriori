@@ -15,7 +15,6 @@ from aposteriori.data_prep.create_frame_data_set import (
 )
 
 
-
 # {{{ CLI
 @click.command()
 @click.argument(
@@ -88,7 +87,8 @@ from aposteriori.data_prep.create_frame_data_set import (
     default="",
     type=click.Path(),
     help=(
-        "Path to a .csv or a .txt file that contains organic molecules (cofactors etc.) to be considered during frame creation"
+        "Path to a Pieces format file used to filter the dataset to specific chains in"
+        "specific files. All other PDB files included in the input will be ignored."
     ),
 )
 @click.option(
@@ -140,7 +140,7 @@ from aposteriori.data_prep.create_frame_data_set import (
     default="CNO",
     required=True,
     help=(
-        "Encodes atoms in different channels, depending on atom types. Default is CNO, other options are ´CNOCB´,`CNOCACB`, `BackSideOrg` `BackCBSideOrg`. If the user wishes to keep only the backbone atoms of polypeptides and encode CB and CA as carbon atoms, they can proceed with CNO encoding. If the user wishes to put Cb or Cb and Ca in different channels, then they can use CNOCB and CNOCACB respectively. If the user wishes to include side-chain atoms, or other organic molecule atoms, they can use BackSideOrg (if they wish to consider CB as a side-chain atom) or BackCBSideOrg(if they wish to consider CB in a separate channel)."
+        "Encodes atoms in different channels, depending on atom types. Default is CNO, other options are ´CNOCB´ and `CNOCACB` to encode the Cb or Cb and Ca in different channels respectively."
     ),
 )
 @click.option(
