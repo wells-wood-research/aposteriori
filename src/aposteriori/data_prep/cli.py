@@ -13,7 +13,6 @@ from aposteriori.data_prep.create_frame_data_set import (
     filter_structures_by_blacklist,
 )
 
-
 # {{{ CLI
 @click.command()
 @click.argument(
@@ -70,6 +69,7 @@ from aposteriori.data_prep.create_frame_data_set import (
         "`voxels-per-side`^3. Default = 21."
     ),
 )
+
 @click.option(
     "-p",
     "--processes",
@@ -110,14 +110,16 @@ from aposteriori.data_prep.create_frame_data_set import (
         "Encode the Cb at an average position (-0.741287356, -0.53937931, -1.224287356) in the aligned frame, even for Glycine residues. Default = True"
     ),
 )
+
+
 @click.option(
     "-ae",
     "--atom_encoder",
-    type=click.Choice(["CNO", "CNOCB", "CNOCBCA"]),
+    type=click.Choice(["CNO", "CNOCB", "CNOCACB"]),
     default="CNO",
     required=True,
     help=(
-        "Encodes atoms in different channels, depending on atom types. Default is CNO, other options are ´CNOCB´ and `CNOCBCA` to encode the Cb or Cb and Ca in different channels respectively."
+        "Encodes atoms in different channels, depending on atom types. Default is CNO, other options are ´CNOCB´ and `CNOCACB` to encode the Cb or Cb and Ca in different channels respectively."
     ),
 )
 @click.option(
@@ -127,7 +129,7 @@ from aposteriori.data_prep.create_frame_data_set import (
     help=(
         "Path to csv file with PDB codes to be voxelised. The biological assembly will be used for download. PDB codes will be downloaded the /pdb/ folder."
     ),
-)
+) 
 @click.option(
     "-g",
     "--voxels_as_gaussian",
@@ -159,6 +161,7 @@ from aposteriori.data_prep.create_frame_data_set import (
         "Whether to voxelise only the first state of the NMR structure (False) or all of them (True)."
     ),
 )
+
 @click.option(
     "-rot",
     "--tag_rotamers",
@@ -168,6 +171,7 @@ from aposteriori.data_prep.create_frame_data_set import (
         "Whether to tag rotamer information to the frame (True) or not (False)."
     ),
 )
+
 def cli(
     structure_file_folder: str,
     output_folder: str,
@@ -269,14 +273,15 @@ def cli(
         codec = Codec.CNO()
     elif atom_encoder == "CNOCB":
         codec = Codec.CNOCB()
-    elif atom_encoder == "CNOCBCA":
-        codec = Codec.CNOCBCA()
+    elif atom_encoder == "CNOCACB":
+        codec = Codec.CNOCACB()
+
     else:
         assert atom_encoder in [
             "CNO",
             "CNOCB",
-            "CNOCBCA",
-        ], f"Expected encoder to be CNO, CNOCB, CNOCBCA but got {atom_encoder}"
+            "CNOCACB",
+        ], f"Expected encoder to be CNO, CNOCB, CNOCACB {atom_encoder}"
 
     make_frame_dataset(
         structure_files=structure_files,
@@ -294,12 +299,10 @@ def cli(
         voxels_as_gaussian=voxels_as_gaussian,
         blacklist_csv=blacklist_csv,
         gzip_compression=compression_gzip,
-        voxelise_all_states=voxelise_all_states,
-        tag_rotamers=tag_rotamers,
-    )
+        voxelise_all_states=voxelise_all_states, 
+        tag_rotamers=tag_rotamers,      
+        )
     return
-
-
 # }}}
 
 
