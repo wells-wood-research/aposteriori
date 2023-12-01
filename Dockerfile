@@ -14,5 +14,8 @@ WORKDIR /code
 # Copy the current directory contents into the container at /code
 COPY . /code
 
-# Upgrade pip and install build dependencies from pyproject.toml and runtime dependencies from setup.py
-RUN pip install --upgrade pip && pip install .
+# Upgrade pip and install Cython explicitly
+RUN pip install --upgrade pip && pip install Cython
+
+# Install build dependencies from pyproject.toml and runtime dependencies from setup.py
+RUN pip install .
