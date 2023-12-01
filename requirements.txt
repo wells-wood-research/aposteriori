@@ -1,5 +1,6 @@
-ampal==1.4.0
+ampal==1.5.0
+Cython==3.0.6
 h5py==3.8.0
-numpy==1.22.1
+numpy==1.22
 pytest==6.2.5
 setuptools==67.8.0

@@ -21,6 +21,25 @@ _Coming soon..._
 pip install aposteriori
 ```
 
+### Manual Install
+
+Change directory to the aposteriori folder if you have not done so already:
+
+```sh
+cd aposteriori/
+```
+
+Install requirements:
+
+```sh
+pip install -r requirements.txt
+```
+
+Install aposteriori
+
+```sh
+pip install .
+```
 ## Creating a Dataset
 
 There are two ways to create a dataset using `aposteriori`: through the Python API in
@@ -223,7 +242,7 @@ If everything went well, you should be seeing the number of structures that
 The easiest way to install a development version of `aposteriori` is using Conda:
 
 
-### Conda and Poetry
+### Conda
 
 Create the environment:
 
@@ -239,16 +258,10 @@ git clone https://github.com/wells-wood-research/aposteriori.git
 cd aposteriori/
 ```
 
-Install poetry:
-
-```shell
-conda install poetry
-```
-
 Install dependencies:
 
 ```sh
-poetry install
+pip install -r requirements.txt
 ```
 
 Install aposteriori:
@@ -256,18 +269,16 @@ Install aposteriori:
 ```shell
 pip install .
 ```
-
-You can then use either `poetry shell` to activate the development environment or use
-`poetry run` to execute single commands in the environment:
+Check that aposteriori works
 
 ```sh
-poetry run make-frame-dataset --help
+ make-frame-dataset --help
 ```
 
 Make sure you test your install:
 
 ```sh
-poetry run pytest tests/
+pytest tests/
 ```
 
 

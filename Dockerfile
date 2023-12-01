@@ -5,21 +5,16 @@ ENV PYTHONFAULTHANDLER=1 \
   PYTHONHASHSEED=random \
   PIP_NO_CACHE_DIR=off \
   PIP_DISABLE_PIP_VERSION_CHECK=on \
-  PIP_DEFAULT_TIMEOUT=100 \
-  POETRY_VERSION=1.1.12
+  PIP_DEFAULT_TIMEOUT=100
 
-# System deps:
-RUN pip install "poetry==$POETRY_VERSION"
-
-# Copy only requirements to cache them in docker layer
+# Set work directory
 WORKDIR /code
-COPY poetry.lock pyproject.toml /code/
 
-# Project initialization:
-RUN poetry config virtualenvs.create false \
-  && poetry install --no-interaction --no-ansi
+# Copy requirements.txt
+COPY requirements.txt /code/
 
-# Creating folders, and files for a project:
+# Install dependencies
+RUN pip install --no-cache-dir -r requirements.txt
+
+# Copy project
 COPY . /code
-
-RUN poetry install --no-interaction --no-ansi
