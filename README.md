@@ -21,6 +21,25 @@ _Coming soon..._
 pip install aposteriori
 ```
 
+### Manual Install
+
+Change directory to the aposteriori folder if you have not done so already:
+
+```sh
+cd aposteriori/
+```
+
+Install requirements:
+
+```sh
+pip install -r requirements.txt
+```
+
+Install aposteriori
+
+```sh
+pip install .
+```
 ## Creating a Dataset
 
 There are two ways to create a dataset using `aposteriori`: through the Python API in
@@ -220,45 +239,62 @@ If everything went well, you should be seeing the number of structures that
 
 ## Development
 
-The easiest way to install a development version of `aposteriori` is using
-[Poetry](https://python-poetry.org):
+The easiest way to install a development version of `aposteriori` is using Conda:
 
-```sh
+
+### Conda
+
+Create the environment:
+
+```shell
+conda create -n aposteriori python=3.8
+```
+
+Activate it and clone the repository:
+
+```shell
+conda activate aposteriori
 git clone https://github.com/wells-wood-research/aposteriori.git
 cd aposteriori/
-poetry install
 ```
 
-In case you get an error about Python Versions (eg. if your python version is >3.7), we recommend you use [PyEnv](https://github.com/pyenv/pyenv) to install a separate version of Python alonside your main one. Then run:  
+Install dependencies:
 
 ```sh
-pyenv install 3.7.0
-pyenv local 3.7.0
+pip install -r requirements.txt
 ```
 
-If you are still having problems switching versions, (eg. you run the previous
- program but running `python -V` shows another version of Python.), try running
+Install aposteriori:
 
-```sh
-eval "$(pyenv init -)"
+```shell
+pip install .
 ```
-
-if Poetry doesn't pick up on the correct version of Python from PyEnv, run
-
-```sh
-poetry env use python3.7
-```
-
-You can then use either `poetry shell` to activate the development environment or use
-`poetry run` to execute single commands in the environment:
+Check that aposteriori works
 
 ```sh
-poetry run make-frame-dataset --help
+ make-frame-dataset --help
 ```
 
 Make sure you test your install:
 
 ```sh
-poetry run pytest tests/
+pytest tests/
 ```
 
+
+### Conda and Pip
+
+Alternatively you can install the repository with pip:
+
+
+```shell
+git clone https://github.com/wells-wood-research/aposteriori.git
+cd aposteriori/
+pip install -r requirements.txt
+```
+
+Install aposteriori:
+
+```shell
+pip install .
+```

@@ -156,6 +156,21 @@ def test_make_frame_dataset():
     voxels_per_side = 31
 
     ampal_1ubq = ampal.load_pdb(str(test_file))
+    if isinstance(ampal_1ubq, ampal.AmpalContainer):
+        for assembly in ampal_1ubq:
+            for monomer in assembly:
+                if isinstance(monomer, ampal.Polypeptide):
+                    monomer.tag_sidechain_dihedrals()
+    elif isinstance(ampal_1ubq, ampal.Polypeptide):
+        ampal_1ubq.tag_sidechain_dihedrals()
+    elif isinstance(ampal_1ubq, ampal.Assembly):
+        # For each monomer in the assembly:
+        for monomer in ampal_1ubq:
+            if isinstance(monomer, ampal.Polypeptide):
+                monomer.tag_sidechain_dihedrals()
+    else:
+        raise ValueError
+
     for atom in ampal_1ubq.get_atoms():
         if not cfds.default_atom_filter(atom):
             del atom.parent.atoms[atom.res_label]
@@ -172,6 +187,7 @@ def test_make_frame_dataset():
             verbosity=1,
             require_confirmation=False,
             codec=codec,
+            tag_rotamers=True
         )
         with h5py.File(output_file_path, "r") as dataset:
             for n in range(1, 77):
@@ -185,6 +201,10 @@ def test_make_frame_dataset():
                     encode_cb=False,
                     codec=codec,
                 )
+                rota = ""
+                for r in ampal_1ubq[0][n-1].tags["rotamers"]:
+                    rota += str(r)
+                assert rota == dataset["1ubq"]["A"][residue_number].attrs["rotamers"], f'Tags Rotamer mismatch found at position {n}: {dataset["1ubq"]["A"][residue_number].attrs["rotamers"]} but expected {rota}'
                 hdf5_array = dataset["1ubq"]["A"][residue_number][()]
                 npt.assert_array_equal(
                     hdf5_array,
@@ -437,6 +457,7 @@ def test_download_pdb_from_csv_file():
         new_paths = TEST_DATA_DIR / pdb_code
         assert new_paths.exists(), f"Could not find path {new_paths} for {pdb_code}"
         new_paths.unlink()
+
 
 def test_filter_structures_by_blacklist():
     blacklist_file = Path("tests/testing_files/filter/pdb_to_filter.csv")
