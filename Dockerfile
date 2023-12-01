@@ -11,8 +11,8 @@ ENV PYTHONFAULTHANDLER=1 \
 # Set work directory
 WORKDIR /code
 
-# Copy pyproject.toml and setup.py (and possibly other necessary files)
-COPY pyproject.toml setup.py /code/
+# Copy pyproject.toml, setup.py, and README.md (and possibly other necessary files)
+COPY pyproject.toml setup.py README.md /code/
 
 # Install build dependencies from pyproject.toml and runtime dependencies from setup.py
 RUN pip install .
