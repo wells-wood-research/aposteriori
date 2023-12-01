@@ -1,20 +1,21 @@
 FROM python:3.8
 
+# Set environment variables
 ENV PYTHONFAULTHANDLER=1 \
-  PYTHONUNBUFFERED=1 \
-  PYTHONHASHSEED=random \
-  PIP_NO_CACHE_DIR=off \
-  PIP_DISABLE_PIP_VERSION_CHECK=on \
-  PIP_DEFAULT_TIMEOUT=100
+    PYTHONUNBUFFERED=1 \
+    PYTHONHASHSEED=random \
+    PIP_NO_CACHE_DIR=off \
+    PIP_DISABLE_PIP_VERSION_CHECK=on \
+    PIP_DEFAULT_TIMEOUT=100
 
 # Set work directory
 WORKDIR /code
 
-# Copy requirements.txt
-COPY requirements.txt /code/
+# Copy pyproject.toml and setup.py (and possibly other necessary files)
+COPY pyproject.toml setup.py /code/
 
-# Install dependencies
-RUN pip install --no-cache-dir -r requirements.txt
+# Install build dependencies from pyproject.toml and runtime dependencies from setup.py
+RUN pip install .
 
-# Copy project
+# Copy the rest of your application
 COPY . /code

@@ -25,6 +25,5 @@ setup(
         'h5py==3.8.0'
         'numpy==1.22'
         'pytest==6.2.5'
-        'setuptools==67.8.0'
     ],
 )
