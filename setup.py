@@ -20,4 +20,11 @@ setup(
     python_requires=">=3.8",
     packages=find_packages("src"),
     package_dir={"": "src"},
+    install_requires=[
+        'ampal==1.5.0'
+        'h5py==3.8.0'
+        'numpy==1.22'
+        'pytest==6.2.5'
+        'setuptools==67.8.0'
+    ],
 )
