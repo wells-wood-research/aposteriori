@@ -1,5 +1,6 @@
 ampal==1.5.0
 h5py==3.8.0
+hypothesis==6.91.0
 numpy==1.22
 pytest==6.2.5
 setuptools==67.8.0
