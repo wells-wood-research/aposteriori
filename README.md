@@ -26,15 +26,9 @@ pip install aposteriori
 Change directory to the aposteriori folder if you have not done so already:
 
 ```sh
+git clone https://github.com/wells-wood-research/aposteriori/tree/master
 cd aposteriori/
 ```
-
-Install requirements:
-
-```sh
-pip install -r requirements.txt
-```
-
 Install aposteriori
 
 ```sh
@@ -261,7 +255,7 @@ cd aposteriori/
 Install dependencies:
 
 ```sh
-pip install -r requirements.txt
+pip install -r dev-requirements.txt
 ```
 
 Install aposteriori:
@@ -282,15 +276,14 @@ pytest tests/
 ```
 
 
-### Conda and Pip
+### Pip (only)
 
 Alternatively you can install the repository with pip:
-
 
 ```shell
 git clone https://github.com/wells-wood-research/aposteriori.git
 cd aposteriori/
-pip install -r requirements.txt
+pip install -r dev-requirements.txt
 ```
 
 Install aposteriori:

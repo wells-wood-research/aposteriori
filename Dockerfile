@@ -20,4 +20,4 @@ RUN pip install --upgrade pip && pip install Cython
 # Install build dependencies from pyproject.toml and runtime dependencies from setup.py
 RUN pip install .
 
-RUN pip install -r requirements.txt
+RUN pip install -r dev-requirements.txt
