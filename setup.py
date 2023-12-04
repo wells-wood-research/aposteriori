@@ -23,6 +23,11 @@ setup(
     setup_requires=[
         "Cython",
     ],
+    entry_points={
+        "console_scripts": [
+            "make-frame-dataset=aposteriori.data_prep.cli:cli",
+        ],
+    },
     install_requires=[
         "ampal==1.5.0",
         "h5py==3.8.0",
