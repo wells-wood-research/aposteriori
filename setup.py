@@ -30,6 +30,7 @@ setup(
     },
     install_requires=[
         "ampal==1.5.0",
+        "click==8.1.7",
         "h5py==3.8.0",
         "numpy==1.22",
     ],
