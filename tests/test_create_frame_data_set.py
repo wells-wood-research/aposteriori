@@ -8,12 +8,37 @@ from hypothesis.strategies import integers
 import ampal
 import ampal.geometry as g
 import aposteriori.data_prep.create_frame_data_set as cfds
+from aposteriori.data_prep.create_frame_data_set import default_atom_filter
 import h5py
 import numpy as np
 import numpy.testing as npt
 import pytest
 
 TEST_DATA_DIR = Path("tests/testing_files/pdb_files/")
+
+
+def test_cb_position():
+    assembly = ampal.load_pdb(str(TEST_DATA_DIR / "3qy1.pdb"))
+    frame_edge_length = 12.0
+    voxels_per_side = 21
+    codec = cfds.Codec.CNOCB()
+    cfds.voxelise_assembly(assembly, name="3qy1", atom_filter_fn=default_atom_filter, frame_edge_length=frame_edge_length, voxels_per_side=voxels_per_side, encode_cb=True, codec=codec, tag_rotamers=False, chain_dict={}, voxels_as_gaussian=False, verbosity=1, chain_filter_list=["A","B"])
+    
+    for chain in assembly:
+        for residue in chain:
+            if not isinstance (residue, ampal.Residue):
+                continue
+            cfds.align_to_residue_plane(residue)
+            assert np.isclose(
+                residue["CB"].x, (residue["CA"].x - 0.741287356),
+            ), f"The Cb has not been encoded at position X = -0.741287356"
+            assert np.isclose(
+                residue["CB"].y, (residue["CA"].y - 0.53937931),
+            ), f"The Cb has not been encoded at position Y = -0.53937931"
+            assert np.isclose(
+                residue["CB"].z, (residue["CA"].z - 1.224287356),
+            ), f"The Cb has not been encoded at position Z = -1.224287356"
+
 
 
 @settings(deadline=1500)
@@ -23,8 +48,7 @@ def test_create_residue_frame_cnocb_encoding(residue_number):
     focus_residue = assembly[0][residue_number]
 
     # Make sure that residue correctly aligns peptide plane to XY
-    cfds.align_to_residue_plane(focus_residue)
-    cfds.encode_cb_to_ampal_residue(focus_residue)
+    cfds.encode_cb_prevox(focus_residue)
     assert np.array_equal(
         focus_residue["CA"].array, (0, 0, 0,)
     ), "The CA atom should lie on the origin."
@@ -58,19 +82,20 @@ def test_create_residue_frame_cnocb_encoding(residue_number):
     codec = cfds.Codec.CNOCB()
     # Make sure that aligned residue sits on XY after it is discretized
     single_res_assembly = ampal.Assembly(
-        molecules=ampal.Polypeptide(monomers=copy.deepcopy(focus_residue).backbone)
+        molecules=ampal.Polypeptide(monomers=copy.deepcopy(focus_residue).backbone, polymer_id="A")
     )
     # Need to reassign the parent so that the residue is the only thing in the assembly
     single_res_assembly[0].parent = single_res_assembly
     single_res_assembly[0][0].parent = single_res_assembly[0]
-    array = cfds.create_residue_frame(
-        single_res_assembly[0][0], frame_edge_length, voxels_per_side, encode_cb=True, codec=codec)
-    np.testing.assert_array_equal(array[centre, centre, centre], [True, False, False, False], err_msg="The central atom should be CA.")
-    nonzero_indices = list(zip(*np.nonzero(array)))
+    chaindict = cfds.voxelise_assembly(
+        single_res_assembly[0][0].parent.parent, name="3qy1", atom_filter_fn=default_atom_filter, frame_edge_length=frame_edge_length, voxels_per_side=voxels_per_side, encode_cb=True, codec=codec, tag_rotamers=False, chain_dict={}, voxels_as_gaussian=False, verbosity=1, chain_filter_list=["A"])[1]
+    array2=chaindict["A"][0].data
+    np.testing.assert_array_equal(array2[centre, centre, centre], [True, False, False, False], err_msg="The central atom should be CA.")
+    nonzero_indices = list(zip(*np.nonzero(array2)))
     assert (
         len(nonzero_indices) == 5
     ), "There should be only 5 backbone atoms in this frame"
-    nonzero_on_xy_indices = list(zip(*np.nonzero(array[:, :, centre])))
+    nonzero_on_xy_indices = list(zip(*np.nonzero(array2[:, :, centre])))
     assert (
         3 <= len(nonzero_on_xy_indices) <= 4
     ), "N, CA and C should lie on the xy plane."
