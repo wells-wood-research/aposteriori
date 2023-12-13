@@ -5,3 +5,4 @@ hypothesis==6.91.0
 numpy==1.22
 pytest==6.2.5
 setuptools==67.8.0
+flake8

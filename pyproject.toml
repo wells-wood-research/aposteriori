@@ -11,5 +11,6 @@ dependencies = [
     "ampal==1.5.1",
     "click==8.1.7",
     "h5py==3.8.0",
-    "numpy"
+    "numpy",
+    "flake8"
     ]
