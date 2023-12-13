@@ -1,25 +1,16 @@
-[tool.poetry]
-name = "aposteriori"
-version = "2.2.0"
-description = "Protein Structures Voxelisation for Deep Learning"
-authors = ["Leonardo Castorina <leonardo.castorina98@gmail.com>"]
-
-[tool.poetry.dependencies]
-python = "^3.8"
-AMPAL = "^1.4.0"
-click = "^8.0.3"
-numpy = "^1.22.1"
-h5py = "^3.6.0"
-hypothesis = "^6.36.0"
-black = "^21.12b0"
-attr = "^0.3.1"
-pytest = "^6.2.5"
-
-[tool.poetry.dev-dependencies]
-
-[tool.poetry.scripts]
-make-frame-dataset = "aposteriori.data_prep.cli:cli"
-
 [build-system]
-requires = ["poetry-core>=1.0.0"]
-build-backend = "poetry.core.masonry.api"
+requires = ["setuptools", "wheel", "Cython"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "Aposteriori"
+version = "2.1.2"
+requires-python = ">= 3.8"
+readme = "README.md"
+dependencies = [
+    "ampal==1.5.1",
+    "click==8.1.7",
+    "h5py==3.8.0",
+    "numpy",
+    "flake8"
+    ]

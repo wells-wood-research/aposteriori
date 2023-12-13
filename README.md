@@ -1,5 +1,5 @@
 <div align="center">
-  <img src="logo.png"><br>
+  <img src="img/logo.png"><br>
   <h3>Protein Structures Voxelisation for Deep Learning</h3><br>
 </div>
 
@@ -7,6 +7,9 @@
 
 [aposteriori](https://github.com/wells-wood-research/aposteriori) is a library for the voxelization of protein structures for protein design. It uses conventional PDB files to create fixed discretized areas of space called "frames". The atoms belonging to the side-chain of the residues are removed so to allow a Deep Learning classifier to determine the identity of the frames based solely on the protein backbone structure. 
 
+<div align="center">
+  <img src="img/voxelisation.png"><br>
+</div>
 
 ## Installation
 
@@ -18,6 +21,19 @@ _Coming soon..._
 pip install aposteriori
 ```
 
+### Manual Install
+
+Change directory to the aposteriori folder if you have not done so already:
+
+```sh
+git clone https://github.com/wells-wood-research/aposteriori/tree/master
+cd aposteriori/
+```
+Install aposteriori
+
+```sh
+pip install .
+```
 ## Creating a Dataset
 
 There are two ways to create a dataset using `aposteriori`: through the Python API in
@@ -84,6 +100,7 @@ Usage: make-frame-dataset [OPTIONS] STRUCTURE_FILE_FOLDER
   So hdf5['1ctf']['A']['58'] would be an array for the voxelized.
 
 Options:
+Options:
   -o, --output-folder PATH        Path to folder where output will be written.
                                   Default = `.`
 
@@ -142,12 +159,12 @@ Options:
                                   Boolean - whether to encode voxels as
                                   gaussians (True) or voxels (False). The
                                   gaussian representation uses the
-                                  Van der Waals radius of each atom using the
+                                  wanderwaal's radius of each atom using the
                                   formula e^(-x^2) where x is Vx - x)^2 + (Vy
                                   - y)^2) + (Vz - z)^2)/ r^2 and  (Vx, Vy, Vz)
                                   is the position of the voxel in space. (x,
                                   y, z) is the position of the atom in space,
-                                  r is the Van der Waals radius of the atom.
+                                  r is the Van der Waal’s radius of the atom.
                                   They are then normalized to add up to 1.
 
   -b, --blacklist_csv PATH        Path to csv file with structures to be
@@ -161,6 +178,9 @@ Options:
                                   Whether to voxelise only the first state of
                                   the NMR structure (False) or all of them
                                   (True).
+
+  -rot, --tag_rotamers BOOLEAN    Whether to tag rotamer information to the
+                                  frame (True) or not (False).
 
   --help                          Show this message and exit.
 
@@ -213,45 +233,61 @@ If everything went well, you should be seeing the number of structures that
 
 ## Development
 
-The easiest way to install a development version of `aposteriori` is using
-[Poetry](https://python-poetry.org):
+The easiest way to install a development version of `aposteriori` is using Conda:
 
-```sh
+
+### Conda
+
+Create the environment:
+
+```shell
+conda create -n aposteriori python=3.8
+```
+
+Activate it and clone the repository:
+
+```shell
+conda activate aposteriori
 git clone https://github.com/wells-wood-research/aposteriori.git
 cd aposteriori/
-poetry install
 ```
 
-In case you get an error about Python Versions (eg. if your python version is >3.7), we recommend you use [PyEnv](https://github.com/pyenv/pyenv) to install a separate version of Python alonside your main one. Then run:  
+Install dependencies:
 
 ```sh
-pyenv install 3.7.0
-pyenv local 3.7.0
+pip install -r dev-requirements.txt
 ```
 
-If you are still having problems switching versions, (eg. you run the previous
- program but running `python -V` shows another version of Python.), try running
+Install aposteriori:
 
-```sh
-eval "$(pyenv init -)"
+```shell
+pip install .
 ```
-
-if Poetry doesn't pick up on the correct version of Python from PyEnv, run
-
-```sh
-poetry env use python3.7
-```
-
-You can then use either `poetry shell` to activate the development environment or use
-`poetry run` to execute single commands in the environment:
+Check that aposteriori works
 
 ```sh
-poetry run make-frame-dataset --help
+ make-frame-dataset --help
 ```
 
 Make sure you test your install:
 
 ```sh
-poetry run pytest tests/
+pytest tests/
 ```
 
+
+### Pip (only)
+
+Alternatively you can install the repository with pip:
+
+```shell
+git clone https://github.com/wells-wood-research/aposteriori.git
+cd aposteriori/
+pip install -r dev-requirements.txt
+```
+
+Install aposteriori:
+
+```shell
+pip install .
+```
