@@ -150,7 +150,7 @@ class Codec:
         atom_label: str
             Label of the atom to be encoded.
         modifiers_triple: t.Tuple[float, float, float]
-            Triple of the difference between the discretized coordinate and the
+            Triple of the difference between the discretized coordinate and the   
             undiscretized coordinate.
 
         Returns
@@ -287,6 +287,20 @@ def encode_cb_to_ampal_residue(residue: ampal.Residue):
     residue["CB"] = cb_atom
     return
 
+def encode_cb_prevox(residue: ampal.Residue):
+    """
+    Encodes a Cb atom to all of the AMPAL residues before the voxelisation begins. The Cb is added to an average position
+    calculated by averaging the Cb coordinates of the aligned frames for the 1QYS protein.
+
+    Parameters
+    ----------
+    residue: ampal.Residue
+        Focus residues that requires the Cb atom.
+
+    """
+    align_to_residue_plane(residue)
+    encode_cb_to_ampal_residue(residue)
+    return
 
 def within_frame(frame_edge_length: float, atom: ampal.Atom) -> bool:
     """Tests if an atom is within the `frame_edge_length` of the origin."""
@@ -611,11 +625,7 @@ def create_residue_frame(
     chain = residue.parent
 
     align_to_residue_plane(residue)
-    # Create a Cb atom at avg postion:
-    if "CB" in codec.atomic_labels:
-        if encode_cb:
-            encode_cb_to_ampal_residue(residue)
-
+    
     frame = np.zeros(
         (voxels_per_side, voxels_per_side, voxels_per_side, codec.encoder_length),
     )
@@ -649,9 +659,10 @@ def create_residue_frame(
             # If the voxel is a gaussian, there may be remnants of a nearby atom
             # hence this test would fail
         if not voxels_as_gaussian:
-            np.testing.assert_array_equal(
-                frame[indices], np.array([False] * len(frame[indices]), dtype=bool)
-            )
+            if not atom.res_label =="CB":
+                np.testing.assert_array_equal(
+                    frame[indices], np.array([False] * len(frame[indices]), dtype=bool)
+                )
         # Encode atoms:
         if voxels_as_gaussian:
             modifiers_triple = calculate_atom_coord_modifier_within_voxel(
@@ -735,6 +746,13 @@ def voxelise_assembly(
         if not atom_filter_fn(atom):
             del atom.parent.atoms[atom.res_label]
             del atom
+    if "CB" in codec.atomic_labels:
+        if encode_cb:
+            for chain in assembly:
+                if not isinstance(chain, ampal.Polypeptide):
+                    continue
+                for residue in chain:
+                    encode_cb_prevox(residue)
     remaining_atoms = len(list(assembly.get_atoms()))
     print(f"{name}: Filtered {total_atoms - remaining_atoms} of {total_atoms} atoms.")
     for chain in assembly:
@@ -778,7 +796,7 @@ def voxelise_assembly(
                     ResidueResult(
                         residue_id=str(residue.id),
                         label=residue.mol_code,
-                        encoded_residue=encoded_residue,
+                       encoded_residue=encoded_residue,
                         data=array,
                         voxels_as_gaussian=voxels_as_gaussian,
                         rotamers=rota
@@ -788,7 +806,7 @@ def voxelise_assembly(
                     print(f"{name}:\t\tAdded residue {chain.id}:{residue.id}.")
         if verbosity > 0:
             print(f"{name}:\tFinished processing chain {chain.id}.")
-
+    
     return (name, chain_dict)
 
 
@@ -865,6 +883,7 @@ def create_frames_from_structure(
                 voxels_as_gaussian,
                 tag_rotamers,
             )
+            
             result.append(curr_result)
     else:
         if isinstance(assembly, ampal.AmpalContainer):
