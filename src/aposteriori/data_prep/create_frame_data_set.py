@@ -14,20 +14,18 @@ import typing as t
 import urllib
 import warnings
 from dataclasses import dataclass
-from multiprocessing import Pool
 from itertools import repeat
-
+from multiprocessing import Pool
 
 import ampal
 import ampal.geometry as geometry
 import h5py
 import numpy as np
+from ampal.amino_acids import residue_charge, polarity_Zimmerman, standard_amino_acids
 
-from ampal.amino_acids import standard_amino_acids
 from aposteriori.config import (
     ATOM_VANDERWAAL_RADII,
     MAKE_FRAME_DATASET_VER,
-    PDB_PATH,
     PDB_REQUEST_URL,
     UNCOMMON_RESIDUE_DICT,
 )
@@ -42,6 +40,7 @@ class ResidueResult:
     data: np.ndarray
     voxels_as_gaussian: bool
     rotamers: str
+
 
 @dataclass
 class DatasetMetadata:
@@ -103,6 +102,14 @@ class Codec:
     @classmethod
     def CNOCBCA(cls):
         return cls(["C", "N", "O", "CB", "CA"])
+
+    @classmethod
+    def CNOCBCAQ(cls):
+        return cls(["C", "N", "O", "CB", "CA", "Q"])
+
+    @classmethod
+    def CNOCBCAP(cls):
+        return cls(["C", "N", "O", "CB", "CA", "P"])
 
     def encode_atom(self, atom_label: str) -> np.ndarray:
         """
@@ -500,6 +507,7 @@ def add_gaussian_at_position(
     atom_coord: t.Tuple[int, int, int],
     atom_idx: int,
     atomic_center: t.Tuple[int, int, int] = (1, 1, 1),
+    normalize: bool = True,
 ) -> np.ndarray:
     """
     Adds a 3D array (of a gaussian atom) to a specific coordinate of a frame.
@@ -548,7 +556,8 @@ def add_gaussian_at_position(
         + empty_frame_voxels.shape[2],  # max z
     ]
     # Normalize local densities by sum of all densities (so that they all sum up to 1):
-    density_matrix_slice /= np.sum(density_matrix_slice)
+    if normalize:
+        density_matrix_slice /= np.sum(density_matrix_slice)
     # Slice the Frame to select the portion that contains the atom of interest:
     frame_slice = empty_frame_voxels[
         max(atom_coord[0] - int(density_matrix_slice.shape[0] / 2), 0) : max(
@@ -623,6 +632,14 @@ def create_residue_frame(
     voxel_edge_length = frame_edge_length / voxels_per_side
     assembly = residue.parent.parent
     chain = residue.parent
+    if "P" in codec.atomic_labels:
+        if residue.mol_letter in standard_amino_acids.keys():
+            res_property = -1 if polarity_Zimmerman[residue.mol_letter] < 20 else 1
+        else:
+            res_property = 0
+        # res_property = -1 if res_property < 20 else 1
+    elif "Q" in codec.atomic_labels:
+        res_property = residue_charge[residue.mol_letter]
 
     align_to_residue_plane(residue)
     
@@ -680,10 +697,29 @@ def create_residue_frame(
                 atom_coord=indices,
                 atom_idx=atom_idx,
             )
+            if (
+                "Q" in codec.atomic_labels
+                or "P" in codec.atomic_labels
+                and res_property != 0
+            ):
+                gaussian_atom = gaussian_matrix[:, :, :, atom_idx] * float(res_property)
+                # Add at position:
+                frame = add_gaussian_at_position(
+                    main_matrix=frame,
+                    secondary_matrix=gaussian_atom,
+                    atom_coord=indices,
+                    atom_idx=5,
+                    normalize=False,
+                )
         else:
             # Encode atom as voxel:
             frame[indices] = Codec.encode_atom(codec, atom.res_label)
-
+            if (
+                "Q" in codec.atomic_labels
+                or "P" in codec.atomic_labels
+                and res_property != 0
+            ):
+                frame[indices] = res_property
     centre = voxels_per_side // 2
     # Check whether central atom is C:
     if "CA" in codec.atomic_labels:
@@ -788,7 +824,9 @@ def voxelise_assembly(
                     if any(v is None for v in residue.tags["rotamers"]):
                         rota = "NAN"
                     else:
-                        rota = "".join(np.array(residue.tags["rotamers"], dtype=str).tolist())
+                        rota = "".join(
+                            np.array(residue.tags["rotamers"], dtype=str).tolist()
+                        )
                 else:
                     rota = "NAN"
                 # Save results:
@@ -799,7 +837,7 @@ def voxelise_assembly(
                        encoded_residue=encoded_residue,
                         data=array,
                         voxels_as_gaussian=voxels_as_gaussian,
-                        rotamers=rota
+                        rotamers=rota,
                     )
                 )
                 if verbosity > 1:
@@ -822,7 +860,7 @@ def create_frames_from_structure(
     codec: object,
     voxels_as_gaussian: bool,
     voxelise_all_states: bool,
-    tag_rotamers: bool
+    tag_rotamers: bool,
 ) -> t.Tuple[str, ChainDict]:
     """Creates residue frames for each residue in the structure.
 
@@ -976,7 +1014,7 @@ def process_single_path(
                 codec,
                 voxels_as_gaussian=voxels_as_gaussian,
                 voxelise_all_states=voxelise_all_states,
-                tag_rotamers=tag_rotamers
+                tag_rotamers=tag_rotamers,
             )
         except Exception as e:
             result = str(e)
@@ -1146,7 +1184,7 @@ def process_paths(
                     codec,
                     voxels_as_gaussian,
                     voxelise_all_states,
-                    tag_rotamers
+                    tag_rotamers,
                 ),
             )
             for proc_i in range(processes)
@@ -1354,7 +1392,10 @@ def _fetch_pdb(
             )
     elif len(pdb_code) == 4:
         if voxelise_all_states:
-            if isinstance(pdb_structure, ampal.AmpalContainer) and len(pdb_structure) > 1:
+            if (
+                isinstance(pdb_structure, ampal.AmpalContainer)
+                and len(pdb_structure) > 1
+            ):
                 ext_pdb = output_path.suffix
                 out_paths = []
 
