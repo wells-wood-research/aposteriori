@@ -1,4 +1,4 @@
-from setuptools import setup, find_packages
+from setuptools import find_packages, setup
 
 with open("README.md", "r") as fh:
     long_description = fh.read()
@@ -29,9 +29,8 @@ setup(
         ],
     },
     install_requires=[
-        "ampal==1.5.0",
+        "ampal==1.5.1",
         "click==8.1.7",
         "h5py==3.8.0",
-        "numpy==1.22",
     ],
 )
