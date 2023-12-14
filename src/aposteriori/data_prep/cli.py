@@ -9,7 +9,7 @@ from aposteriori.data_prep.create_frame_data_set import (
     make_frame_dataset,
     StrOrPath,
     organic_cofactors,
-    default_atom_filter,
+    keep_sidechains,
     download_pdb_from_csv_file,
     filter_structures_by_blacklist,
 )
@@ -81,7 +81,6 @@ from aposteriori.data_prep.create_frame_data_set import (
         "The value should be set between 0 and 1"
     ),
 )
-
 @click.option(
     "--cfile",
     default="",
@@ -131,12 +130,10 @@ from aposteriori.data_prep.create_frame_data_set import (
         "Encode the Cb at an average position (-0.741287356, -0.53937931, -1.224287356) in the aligned frame, even for Glycine residues. Default = True"
     ),
 )
-
-
 @click.option(
     "-ae",
     "--atom_encoder",
-    type=click.Choice(["CNO", "CNOCB", "CNOCACB","BackSideOrg","BackCBSideOrg"]),
+    type=click.Choice(["CNO", "CNOCB", "CNOCACB", "BackSideOrg", "BackCBSideOrg"]),
     default="CNO",
     required=True,
     help=(
@@ -182,8 +179,6 @@ from aposteriori.data_prep.create_frame_data_set import (
         "Whether to voxelise only the first state of the NMR structure (False) or all of them (True)."
     ),
 )
-
-
 def cli(
     structure_file_folder: str,
     output_folder: str,
@@ -311,7 +306,7 @@ def cli(
         keep_side_chain_portion=keep_side_chain_portion,
         cfile=cfile,
         codec=codec,
-        atom_filter_fn=default_atom_filter,
+        atom_filter_fn=keep_sidechains,
         pieces_filter_file=pieces_filter_file,
         processes=processes,
         is_pdb_gzipped=is_pdb_gzipped,
@@ -320,8 +315,9 @@ def cli(
         voxels_as_gaussian=voxels_as_gaussian,
         blacklist_csv=blacklist_csv,
         gzip_compression=compression_gzip,
-        voxelise_all_states=voxelise_all_states,       
-        )
+        voxelise_all_states=voxelise_all_states,
+    )
+
 
 # }}}
 
