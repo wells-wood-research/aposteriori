@@ -370,15 +370,35 @@ def test_make_frame_dataset_as_gaussian_cnocacbq():
     test_file = TEST_DATA_DIR / "1ubq.pdb"
     frame_edge_length = 18.0
     voxels_per_side = 31
-
+    codec = cfds.Codec.CNOCBCAQ()
     ampal_1ubq = ampal.load_pdb(str(test_file))
+    ampal_1ubq2 = ampal.load_pdb(str(test_file))
+
+    test_frame = cfds.voxelise_assembly(
+        ampal_1ubq2,
+        name="1ubq",
+        atom_filter_fn=default_atom_filter,
+        frame_edge_length=frame_edge_length,
+        voxels_per_side=voxels_per_side,
+        encode_cb=True,
+        codec=codec,
+        tag_rotamers=False,
+        chain_dict={},
+        voxels_as_gaussian=True,
+        verbosity=1,
+        chain_filter_list=["A"],
+    )[1]
+
+    array_test = []
+    for k in range(76):
+        array_test.append(test_frame["A"][k].data)
+
     for atom in ampal_1ubq.get_atoms():
         if not cfds.default_atom_filter(atom):
             del atom.parent.atoms[atom.res_label]
             del atom
     with tempfile.TemporaryDirectory() as tmpdir:
         # Obtain atom encoder:
-        codec = cfds.Codec.CNOCBCAQ()
         output_file_path = cfds.make_frame_dataset(
             structure_files=[test_file],
             output_folder=tmpdir,
@@ -395,18 +415,11 @@ def test_make_frame_dataset_as_gaussian_cnocacbq():
                 # check that the frame for all the data frames match between the input
                 # arrays and the ones that come out of the HDF5 data set
                 residue_number = str(n)
-                test_frame = cfds.create_residue_frame(
-                    residue=ampal_1ubq["A"][residue_number],
-                    frame_edge_length=frame_edge_length,
-                    voxels_per_side=voxels_per_side,
-                    encode_cb=True,
-                    codec=codec,
-                    voxels_as_gaussian=True,
-                )
+                test_residue = array_test[n - 1]
                 hdf5_array = dataset["1ubq"]["A"][residue_number][()]
                 npt.assert_array_equal(
                     hdf5_array,
-                    test_frame,
+                    test_residue,
                     err_msg=(
                         "The frame in the HDF5 data set should be the same as the "
                         "input frame."
@@ -414,9 +427,9 @@ def test_make_frame_dataset_as_gaussian_cnocacbq():
                 )
                 charge = residue_charge[ampal_1ubq["A"][residue_number].mol_letter]
                 if charge > 0:
-                    assert np.max(test_frame[:, :, :, 5]) > 0
+                    assert np.max(test_residue[:, :, :, 5]) > 0
                 if charge < 0:
-                    assert np.min(test_frame[:, :, :, 5]) < 0
+                    assert np.min(test_residue[:, :, :, 5]) < 0
 
 
 def test_make_frame_dataset_as_gaussian_cnocacbp():
@@ -424,15 +437,36 @@ def test_make_frame_dataset_as_gaussian_cnocacbp():
     test_file = TEST_DATA_DIR / "1ubq.pdb"
     frame_edge_length = 18.0
     voxels_per_side = 31
+    codec = cfds.Codec.CNOCBCAP()
 
     ampal_1ubq = ampal.load_pdb(str(test_file))
+    ampal_1ubq2 = ampal.load_pdb(str(test_file))
+
+    test_frame = cfds.voxelise_assembly(
+        ampal_1ubq2,
+        name="1ubq",
+        atom_filter_fn=default_atom_filter,
+        frame_edge_length=frame_edge_length,
+        voxels_per_side=voxels_per_side,
+        encode_cb=True,
+        codec=codec,
+        tag_rotamers=False,
+        chain_dict={},
+        voxels_as_gaussian=True,
+        verbosity=1,
+        chain_filter_list=["A"],
+    )[1]
+
+    array_test = []
+    for k in range(76):
+        array_test.append(test_frame["A"][k].data)
+
     for atom in ampal_1ubq.get_atoms():
         if not cfds.default_atom_filter(atom):
             del atom.parent.atoms[atom.res_label]
             del atom
     with tempfile.TemporaryDirectory() as tmpdir:
         # Obtain atom encoder:
-        codec = cfds.Codec.CNOCBCAP()
         output_file_path = cfds.make_frame_dataset(
             structure_files=[test_file],
             output_folder=tmpdir,
@@ -449,41 +483,32 @@ def test_make_frame_dataset_as_gaussian_cnocacbp():
                 # check that the frame for all the data frames match between the input
                 # arrays and the ones that come out of the HDF5 data set
                 residue_number = str(n)
-                test_frame = cfds.create_residue_frame(
-                    residue=ampal_1ubq["A"][residue_number],
-                    frame_edge_length=frame_edge_length,
-                    voxels_per_side=voxels_per_side,
-                    encode_cb=True,
-                    codec=codec,
-                    voxels_as_gaussian=True,
-                )
+                residue_test = array_test[n - 1]
                 hdf5_array = dataset["1ubq"]["A"][residue_number][()]
                 npt.assert_array_equal(
                     hdf5_array,
-                    test_frame,
+                    residue_test,
                     err_msg=(
                         "The frame in the HDF5 data set should be the same as the "
                         "input frame."
                     ),
                 )
-                if (
-                    ampal_1ubq["A"][residue_number].mol_letter
-                    in standard_amino_acids.keys()
-                ):
-                    polarity = (
-                        -1
-                        if polarity_Zimmerman[
-                            ampal_1ubq["A"][residue_number].mol_letter
-                        ]
-                        < 20
-                        else 1
-                    )
-                else:
-                    polarity = 0
-                if polarity == 1:
-                    assert np.max(test_frame[:, :, :, 5]) > 0
-                if polarity == 0:
-                    assert np.min(test_frame[:, :, :, 5]) < 0
+            if (
+                ampal_1ubq["A"][residue_number].mol_letter
+                in standard_amino_acids.keys()
+            ):
+                polarity = (
+                    -1
+                    if polarity_Zimmerman[ampal_1ubq["A"][residue_number].mol_letter]
+                    < 20
+                    else 1
+                )
+            else:
+                polarity = 0
+            if polarity == 1:
+                assert np.max(residue_test[:, :, :, 5]) > 0
+            if polarity == 0:
+                assert np.min(residue_test[:, :, :, 5]) < 0
 
 
 @settings(deadline=700)
