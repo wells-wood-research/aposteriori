@@ -25,23 +25,38 @@ def test_cb_position():
     frame_edge_length = 12.0
     voxels_per_side = 21
     codec = cfds.Codec.CNOCB()
-    cfds.voxelise_assembly(assembly, name="3qy1", atom_filter_fn=default_atom_filter, frame_edge_length=frame_edge_length, voxels_per_side=voxels_per_side, encode_cb=True, codec=codec, tag_rotamers=False, chain_dict={}, voxels_as_gaussian=False, verbosity=1, chain_filter_list=["A","B"])
-    
+    cfds.voxelise_assembly(
+        assembly,
+        name="3qy1",
+        atom_filter_fn=default_atom_filter,
+        frame_edge_length=frame_edge_length,
+        voxels_per_side=voxels_per_side,
+        encode_cb=True,
+        codec=codec,
+        tag_rotamers=False,
+        chain_dict={},
+        voxels_as_gaussian=False,
+        verbosity=1,
+        chain_filter_list=["A", "B"],
+    )
+
     for chain in assembly:
         for residue in chain:
-            if not isinstance (residue, ampal.Residue):
+            if not isinstance(residue, ampal.Residue):
                 continue
             cfds.align_to_residue_plane(residue)
             assert np.isclose(
-                residue["CB"].x, (residue["CA"].x - 0.741287356),
+                residue["CB"].x,
+                (residue["CA"].x - 0.741287356),
             ), f"The Cb has not been encoded at position X = -0.741287356"
             assert np.isclose(
-                residue["CB"].y, (residue["CA"].y - 0.53937931),
+                residue["CB"].y,
+                (residue["CA"].y - 0.53937931),
             ), f"The Cb has not been encoded at position Y = -0.53937931"
             assert np.isclose(
-                residue["CB"].z, (residue["CA"].z - 1.224287356),
+                residue["CB"].z,
+                (residue["CA"].z - 1.224287356),
             ), f"The Cb has not been encoded at position Z = -1.224287356"
-
 
 
 @settings(deadline=1500)
@@ -94,15 +109,33 @@ def test_create_residue_frame_cnocb_encoding(residue_number):
     codec = cfds.Codec.CNOCB()
     # Make sure that aligned residue sits on XY after it is discretized
     single_res_assembly = ampal.Assembly(
-        molecules=ampal.Polypeptide(monomers=copy.deepcopy(focus_residue).backbone, polymer_id="A")
+        molecules=ampal.Polypeptide(
+            monomers=copy.deepcopy(focus_residue).backbone, polymer_id="A"
+        )
     )
     # Need to reassign the parent so that the residue is the only thing in the assembly
     single_res_assembly[0].parent = single_res_assembly
     single_res_assembly[0][0].parent = single_res_assembly[0]
     chaindict = cfds.voxelise_assembly(
-        single_res_assembly[0][0].parent.parent, name="3qy1", atom_filter_fn=default_atom_filter, frame_edge_length=frame_edge_length, voxels_per_side=voxels_per_side, encode_cb=True, codec=codec, tag_rotamers=False, chain_dict={}, voxels_as_gaussian=False, verbosity=1, chain_filter_list=["A"])[1]
-    array_test=chaindict["A"][0].data
-    np.testing.assert_array_equal(array_test[centre, centre, centre], [True, False, False, False], err_msg="The central atom should be CA.")
+        single_res_assembly[0][0].parent.parent,
+        name="3qy1",
+        atom_filter_fn=default_atom_filter,
+        frame_edge_length=frame_edge_length,
+        voxels_per_side=voxels_per_side,
+        encode_cb=True,
+        codec=codec,
+        tag_rotamers=False,
+        chain_dict={},
+        voxels_as_gaussian=False,
+        verbosity=1,
+        chain_filter_list=["A"],
+    )[1]
+    array_test = chaindict["A"][0].data
+    np.testing.assert_array_equal(
+        array_test[centre, centre, centre],
+        [True, False, False, False],
+        err_msg="The central atom should be CA.",
+    )
     nonzero_indices = list(zip(*np.nonzero(array_test)))
     assert (
         len(nonzero_indices) == 5
@@ -433,8 +466,18 @@ def test_make_frame_dataset_as_gaussian_cnocacbp():
                         "input frame."
                     ),
                 )
-                if ampal_1ubq["A"][residue_number].mol_letter in standard_amino_acids.keys():
-                    polarity = -1 if polarity_Zimmerman[ampal_1ubq["A"][residue_number].mol_letter] < 20 else 1
+                if (
+                    ampal_1ubq["A"][residue_number].mol_letter
+                    in standard_amino_acids.keys()
+                ):
+                    polarity = (
+                        -1
+                        if polarity_Zimmerman[
+                            ampal_1ubq["A"][residue_number].mol_letter
+                        ]
+                        < 20
+                        else 1
+                    )
                 else:
                     polarity = 0
                 if polarity == 1:

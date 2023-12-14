@@ -157,7 +157,7 @@ class Codec:
         atom_label: str
             Label of the atom to be encoded.
         modifiers_triple: t.Tuple[float, float, float]
-            Triple of the difference between the discretized coordinate and the   
+            Triple of the difference between the discretized coordinate and the
             undiscretized coordinate.
 
         Returns
@@ -294,6 +294,7 @@ def encode_cb_to_ampal_residue(residue: ampal.Residue):
     residue["CB"] = cb_atom
     return
 
+
 def encode_cb_prevox(residue: ampal.Residue):
     """
     Encodes a Cb atom to all of the AMPAL residues before the voxelisation begins. The Cb is added to an average position
@@ -308,6 +309,7 @@ def encode_cb_prevox(residue: ampal.Residue):
     align_to_residue_plane(residue)
     encode_cb_to_ampal_residue(residue)
     return
+
 
 def within_frame(frame_edge_length: float, atom: ampal.Atom) -> bool:
     """Tests if an atom is within the `frame_edge_length` of the origin."""
@@ -448,7 +450,7 @@ def convert_atom_to_gaussian_density(
             # Calculate Density:
             voxel_density = np.exp(
                 -((vx - x) ** 2 + (vy - y) ** 2 + (vz - z) ** 2)
-                / wanderwaal_radius ** 2
+                / wanderwaal_radius**2
             )
             # Add density to frame:
             gaussian_frame[vy, vx, vz] = voxel_density
@@ -642,7 +644,7 @@ def create_residue_frame(
         res_property = residue_charge[residue.mol_letter]
 
     align_to_residue_plane(residue)
-    
+
     frame = np.zeros(
         (voxels_per_side, voxels_per_side, voxels_per_side, codec.encoder_length),
     )
@@ -676,7 +678,7 @@ def create_residue_frame(
             # If the voxel is a gaussian, there may be remnants of a nearby atom
             # hence this test would fail
         if not voxels_as_gaussian:
-            if not atom.res_label =="CB":
+            if not atom.res_label == "CB":
                 np.testing.assert_array_equal(
                     frame[indices], np.array([False] * len(frame[indices]), dtype=bool)
                 )
@@ -834,7 +836,7 @@ def voxelise_assembly(
                     ResidueResult(
                         residue_id=str(residue.id),
                         label=residue.mol_code,
-                       encoded_residue=encoded_residue,
+                        encoded_residue=encoded_residue,
                         data=array,
                         voxels_as_gaussian=voxels_as_gaussian,
                         rotamers=rota,
@@ -844,7 +846,7 @@ def voxelise_assembly(
                     print(f"{name}:\t\tAdded residue {chain.id}:{residue.id}.")
         if verbosity > 0:
             print(f"{name}:\tFinished processing chain {chain.id}.")
-    
+
     return (name, chain_dict)
 
 
@@ -921,7 +923,7 @@ def create_frames_from_structure(
                 voxels_as_gaussian,
                 tag_rotamers,
             )
-            
+
             result.append(curr_result)
     else:
         if isinstance(assembly, ampal.AmpalContainer):
@@ -1638,7 +1640,7 @@ def make_frame_dataset(
     print(f"Will attempt to process {total_files} structure file/s.")
     print(f"Output file will be written to `{output_file_path.resolve()}`.")
     voxel_edge_length = frame_edge_length / voxels_per_side
-    max_voxel_distance = np.sqrt(voxel_edge_length ** 2 * 3)
+    max_voxel_distance = np.sqrt(voxel_edge_length**2 * 3)
     print(f"Frame edge length = {frame_edge_length:.2f} A")
     print(f"Voxels per side = {voxels_per_side}")
     print(f"Voxels will have an edge length of {voxel_edge_length:.2f} A.")
