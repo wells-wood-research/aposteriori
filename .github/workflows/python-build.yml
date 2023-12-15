@@ -36,3 +36,13 @@ jobs:
       run: |
         pip install wheel
         python setup.py bdist_wheel
+    - name: Build source distribution
+      run: |
+        python setup.py sdist
+    - name: Upload wheel and source distribution
+      uses: actions/upload-artifact@v3
+      with:
+        name: python-package
+        path: |
+          dist/*.whl
+          dist/*.tar.gz
