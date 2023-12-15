@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setup(
     name="aposteriori",
-    version="2.2.2",
+    version="2.2.0",
     author="Wells Wood Research Group",
     author_email="chris.wood@ed.ac.uk",
     description="A library for the voxelization of protein structures for protein design.",

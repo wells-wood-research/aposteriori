@@ -295,6 +295,22 @@ def encode_cb_to_ampal_residue(residue: ampal.Residue):
     return
 
 
+def encode_cb_prevox(residue: ampal.Residue):
+    """
+    Encodes a Cb atom to all of the AMPAL residues before the voxelisation begins. The Cb is added to an average position
+    calculated by averaging the Cb coordinates of the aligned frames for the 1QYS protein.
+
+    Parameters
+    ----------
+    residue: ampal.Residue
+        Focus residues that requires the Cb atom.
+
+    """
+    align_to_residue_plane(residue)
+    encode_cb_to_ampal_residue(residue)
+    return
+
+
 def within_frame(frame_edge_length: float, atom: ampal.Atom) -> bool:
     """Tests if an atom is within the `frame_edge_length` of the origin."""
     half_frame_edge_length = frame_edge_length / 2
@@ -434,7 +450,7 @@ def convert_atom_to_gaussian_density(
             # Calculate Density:
             voxel_density = np.exp(
                 -((vx - x) ** 2 + (vy - y) ** 2 + (vz - z) ** 2)
-                / wanderwaal_radius ** 2
+                / wanderwaal_radius**2
             )
             # Add density to frame:
             gaussian_frame[vy, vx, vz] = voxel_density
@@ -628,10 +644,6 @@ def create_residue_frame(
         res_property = residue_charge[residue.mol_letter]
 
     align_to_residue_plane(residue)
-    # Create a Cb atom at avg postion:
-    if "CB" in codec.atomic_labels:
-        if encode_cb:
-            encode_cb_to_ampal_residue(residue)
 
     frame = np.zeros(
         (voxels_per_side, voxels_per_side, voxels_per_side, codec.encoder_length),
@@ -666,9 +678,10 @@ def create_residue_frame(
             # If the voxel is a gaussian, there may be remnants of a nearby atom
             # hence this test would fail
         if not voxels_as_gaussian:
-            np.testing.assert_array_equal(
-                frame[indices], np.array([False] * len(frame[indices]), dtype=bool)
-            )
+            if not atom.res_label == "CB":
+                np.testing.assert_array_equal(
+                    frame[indices], np.array([False] * len(frame[indices]), dtype=bool)
+                )
         # Encode atoms:
         if voxels_as_gaussian:
             modifiers_triple = calculate_atom_coord_modifier_within_voxel(
@@ -771,6 +784,13 @@ def voxelise_assembly(
         if not atom_filter_fn(atom):
             del atom.parent.atoms[atom.res_label]
             del atom
+    if "CB" in codec.atomic_labels:
+        if encode_cb:
+            for chain in assembly:
+                if not isinstance(chain, ampal.Polypeptide):
+                    continue
+                for residue in chain:
+                    encode_cb_prevox(residue)
     remaining_atoms = len(list(assembly.get_atoms()))
     print(f"{name}: Filtered {total_atoms - remaining_atoms} of {total_atoms} atoms.")
     for chain in assembly:
@@ -903,6 +923,7 @@ def create_frames_from_structure(
                 voxels_as_gaussian,
                 tag_rotamers,
             )
+
             result.append(curr_result)
     else:
         if isinstance(assembly, ampal.AmpalContainer):
@@ -1619,7 +1640,7 @@ def make_frame_dataset(
     print(f"Will attempt to process {total_files} structure file/s.")
     print(f"Output file will be written to `{output_file_path.resolve()}`.")
     voxel_edge_length = frame_edge_length / voxels_per_side
-    max_voxel_distance = np.sqrt(voxel_edge_length ** 2 * 3)
+    max_voxel_distance = np.sqrt(voxel_edge_length**2 * 3)
     print(f"Frame edge length = {frame_edge_length:.2f} A")
     print(f"Voxels per side = {voxels_per_side}")
     print(f"Voxels will have an edge length of {voxel_edge_length:.2f} A.")

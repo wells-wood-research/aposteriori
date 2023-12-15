@@ -5,6 +5,8 @@ from pathlib import Path
 
 import ampal
 import ampal.geometry as g
+import aposteriori.data_prep.create_frame_data_set as cfds
+from aposteriori.data_prep.create_frame_data_set import default_atom_filter
 import h5py
 import numpy as np
 import numpy.testing as npt
@@ -18,6 +20,45 @@ import aposteriori.data_prep.create_frame_data_set as cfds
 TEST_DATA_DIR = Path("tests/testing_files/pdb_files/")
 
 
+def test_cb_position():
+    assembly = ampal.load_pdb(str(TEST_DATA_DIR / "3qy1.pdb"))
+    frame_edge_length = 12.0
+    voxels_per_side = 21
+    codec = cfds.Codec.CNOCB()
+    cfds.voxelise_assembly(
+        assembly,
+        name="3qy1",
+        atom_filter_fn=default_atom_filter,
+        frame_edge_length=frame_edge_length,
+        voxels_per_side=voxels_per_side,
+        encode_cb=True,
+        codec=codec,
+        tag_rotamers=False,
+        chain_dict={},
+        voxels_as_gaussian=False,
+        verbosity=1,
+        chain_filter_list=["A", "B"],
+    )
+
+    for chain in assembly:
+        for residue in chain:
+            if not isinstance(residue, ampal.Residue):
+                continue
+            cfds.align_to_residue_plane(residue)
+            assert np.isclose(
+                residue["CB"].x,
+                (residue["CA"].x - 0.741287356),
+            ), f"The Cb has not been encoded at position X = -0.741287356"
+            assert np.isclose(
+                residue["CB"].y,
+                (residue["CA"].y - 0.53937931),
+            ), f"The Cb has not been encoded at position Y = -0.53937931"
+            assert np.isclose(
+                residue["CB"].z,
+                (residue["CA"].z - 1.224287356),
+            ), f"The Cb has not been encoded at position Z = -1.224287356"
+
+
 @settings(deadline=1500)
 @given(integers(min_value=0, max_value=214))
 def test_create_residue_frame_cnocb_encoding(residue_number):
@@ -26,8 +67,7 @@ def test_create_residue_frame_cnocb_encoding(residue_number):
     focus_residue = assembly[0][residue_number]
 
     # Make sure that residue correctly aligns peptide plane to XY
-    cfds.align_to_residue_plane(focus_residue)
-    cfds.encode_cb_to_ampal_residue(focus_residue)
+    cfds.encode_cb_prevox(focus_residue)
     assert np.array_equal(
         focus_residue["CA"].array,
         (
@@ -69,28 +109,38 @@ def test_create_residue_frame_cnocb_encoding(residue_number):
     codec = cfds.Codec.CNOCB()
     # Make sure that aligned residue sits on XY after it is discretized
     single_res_assembly = ampal.Assembly(
-        molecules=ampal.Polypeptide(monomers=copy.deepcopy(focus_residue).backbone)
+        molecules=ampal.Polypeptide(
+            monomers=copy.deepcopy(focus_residue).backbone, polymer_id="A"
+        )
     )
     # Need to reassign the parent so that the residue is the only thing in the assembly
     single_res_assembly[0].parent = single_res_assembly
     single_res_assembly[0][0].parent = single_res_assembly[0]
-    array = cfds.create_residue_frame(
-        single_res_assembly[0][0],
-        frame_edge_length,
-        voxels_per_side,
+    chaindict = cfds.voxelise_assembly(
+        single_res_assembly[0][0].parent.parent,
+        name="3qy1",
+        atom_filter_fn=default_atom_filter,
+        frame_edge_length=frame_edge_length,
+        voxels_per_side=voxels_per_side,
         encode_cb=True,
         codec=codec,
-    )
+        tag_rotamers=False,
+        chain_dict={},
+        voxels_as_gaussian=False,
+        verbosity=1,
+        chain_filter_list=["A"],
+    )[1]
+    array_test = chaindict["A"][0].data
     np.testing.assert_array_equal(
-        array[centre, centre, centre],
+        array_test[centre, centre, centre],
         [True, False, False, False],
         err_msg="The central atom should be CA.",
     )
-    nonzero_indices = list(zip(*np.nonzero(array)))
+    nonzero_indices = list(zip(*np.nonzero(array_test)))
     assert (
         len(nonzero_indices) == 5
     ), "There should be only 5 backbone atoms in this frame"
-    nonzero_on_xy_indices = list(zip(*np.nonzero(array[:, :, centre])))
+    nonzero_on_xy_indices = list(zip(*np.nonzero(array_test[:, :, centre])))
     assert (
         3 <= len(nonzero_on_xy_indices) <= 4
     ), "N, CA and C should lie on the xy plane."
@@ -320,15 +370,35 @@ def test_make_frame_dataset_as_gaussian_cnocacbq():
     test_file = TEST_DATA_DIR / "1ubq.pdb"
     frame_edge_length = 18.0
     voxels_per_side = 31
-
+    codec = cfds.Codec.CNOCBCAQ()
     ampal_1ubq = ampal.load_pdb(str(test_file))
+    ampal_1ubq2 = ampal.load_pdb(str(test_file))
+
+    test_frame = cfds.voxelise_assembly(
+        ampal_1ubq2,
+        name="1ubq",
+        atom_filter_fn=default_atom_filter,
+        frame_edge_length=frame_edge_length,
+        voxels_per_side=voxels_per_side,
+        encode_cb=True,
+        codec=codec,
+        tag_rotamers=False,
+        chain_dict={},
+        voxels_as_gaussian=True,
+        verbosity=1,
+        chain_filter_list=["A"],
+    )[1]
+
+    array_test = []
+    for k in range(76):
+        array_test.append(test_frame["A"][k].data)
+
     for atom in ampal_1ubq.get_atoms():
         if not cfds.default_atom_filter(atom):
             del atom.parent.atoms[atom.res_label]
             del atom
     with tempfile.TemporaryDirectory() as tmpdir:
         # Obtain atom encoder:
-        codec = cfds.Codec.CNOCBCAQ()
         output_file_path = cfds.make_frame_dataset(
             structure_files=[test_file],
             output_folder=tmpdir,
@@ -345,18 +415,11 @@ def test_make_frame_dataset_as_gaussian_cnocacbq():
                 # check that the frame for all the data frames match between the input
                 # arrays and the ones that come out of the HDF5 data set
                 residue_number = str(n)
-                test_frame = cfds.create_residue_frame(
-                    residue=ampal_1ubq["A"][residue_number],
-                    frame_edge_length=frame_edge_length,
-                    voxels_per_side=voxels_per_side,
-                    encode_cb=True,
-                    codec=codec,
-                    voxels_as_gaussian=True,
-                )
+                test_residue = array_test[n - 1]
                 hdf5_array = dataset["1ubq"]["A"][residue_number][()]
                 npt.assert_array_equal(
                     hdf5_array,
-                    test_frame,
+                    test_residue,
                     err_msg=(
                         "The frame in the HDF5 data set should be the same as the "
                         "input frame."
@@ -364,9 +427,9 @@ def test_make_frame_dataset_as_gaussian_cnocacbq():
                 )
                 charge = residue_charge[ampal_1ubq["A"][residue_number].mol_letter]
                 if charge > 0:
-                    assert np.max(test_frame[:, :, :, 5]) > 0
+                    assert np.max(test_residue[:, :, :, 5]) > 0
                 if charge < 0:
-                    assert np.min(test_frame[:, :, :, 5]) < 0
+                    assert np.min(test_residue[:, :, :, 5]) < 0
 
 
 def test_make_frame_dataset_as_gaussian_cnocacbp():
@@ -374,15 +437,36 @@ def test_make_frame_dataset_as_gaussian_cnocacbp():
     test_file = TEST_DATA_DIR / "1ubq.pdb"
     frame_edge_length = 18.0
     voxels_per_side = 31
+    codec = cfds.Codec.CNOCBCAP()
 
     ampal_1ubq = ampal.load_pdb(str(test_file))
+    ampal_1ubq2 = ampal.load_pdb(str(test_file))
+
+    test_frame = cfds.voxelise_assembly(
+        ampal_1ubq2,
+        name="1ubq",
+        atom_filter_fn=default_atom_filter,
+        frame_edge_length=frame_edge_length,
+        voxels_per_side=voxels_per_side,
+        encode_cb=True,
+        codec=codec,
+        tag_rotamers=False,
+        chain_dict={},
+        voxels_as_gaussian=True,
+        verbosity=1,
+        chain_filter_list=["A"],
+    )[1]
+
+    array_test = []
+    for k in range(76):
+        array_test.append(test_frame["A"][k].data)
+
     for atom in ampal_1ubq.get_atoms():
         if not cfds.default_atom_filter(atom):
             del atom.parent.atoms[atom.res_label]
             del atom
     with tempfile.TemporaryDirectory() as tmpdir:
         # Obtain atom encoder:
-        codec = cfds.Codec.CNOCBCAP()
         output_file_path = cfds.make_frame_dataset(
             structure_files=[test_file],
             output_folder=tmpdir,
@@ -399,31 +483,32 @@ def test_make_frame_dataset_as_gaussian_cnocacbp():
                 # check that the frame for all the data frames match between the input
                 # arrays and the ones that come out of the HDF5 data set
                 residue_number = str(n)
-                test_frame = cfds.create_residue_frame(
-                    residue=ampal_1ubq["A"][residue_number],
-                    frame_edge_length=frame_edge_length,
-                    voxels_per_side=voxels_per_side,
-                    encode_cb=True,
-                    codec=codec,
-                    voxels_as_gaussian=True,
-                )
+                residue_test = array_test[n - 1]
                 hdf5_array = dataset["1ubq"]["A"][residue_number][()]
                 npt.assert_array_equal(
                     hdf5_array,
-                    test_frame,
+                    residue_test,
                     err_msg=(
                         "The frame in the HDF5 data set should be the same as the "
                         "input frame."
                     ),
                 )
-                if ampal_1ubq["A"][residue_number].mol_letter in standard_amino_acids.keys():
-                    polarity = -1 if polarity_Zimmerman[ampal_1ubq["A"][residue_number].mol_letter] < 20 else 1
-                else:
-                    polarity = 0
-                if polarity == 1:
-                    assert np.max(test_frame[:, :, :, 5]) > 0
-                if polarity == 0:
-                    assert np.min(test_frame[:, :, :, 5]) < 0
+            if (
+                ampal_1ubq["A"][residue_number].mol_letter
+                in standard_amino_acids.keys()
+            ):
+                polarity = (
+                    -1
+                    if polarity_Zimmerman[ampal_1ubq["A"][residue_number].mol_letter]
+                    < 20
+                    else 1
+                )
+            else:
+                polarity = 0
+            if polarity == 1:
+                assert np.max(residue_test[:, :, :, 5]) > 0
+            if polarity == 0:
+                assert np.min(residue_test[:, :, :, 5]) < 0
 
 
 @settings(deadline=700)

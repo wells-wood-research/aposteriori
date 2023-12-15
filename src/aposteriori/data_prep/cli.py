@@ -5,8 +5,13 @@ import warnings
 
 import click
 
-from aposteriori.data_prep.create_frame_data_set import (Codec, StrOrPath, default_atom_filter, download_pdb_from_csv_file,
-                                                         make_frame_dataset)
+from aposteriori.data_prep.create_frame_data_set import (
+    Codec,
+    StrOrPath,
+    default_atom_filter,
+    download_pdb_from_csv_file,
+    make_frame_dataset,
+)
 
 
 # {{{ CLI
