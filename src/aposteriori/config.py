@@ -3,7 +3,7 @@ import pathlib
 from ampal.data import ELEMENT_DATA
 
 # Config paths
-MAKE_FRAME_DATASET_VER = "3.0.0"
+MAKE_FRAME_DATASET_VER = "2.2.0"
 PROJECT_ROOT_DIR = pathlib.Path(__file__).parent
 DATA_FOLDER = PROJECT_ROOT_DIR / "data"
 DATA_FOLDER.mkdir(parents=True, exist_ok=True)
