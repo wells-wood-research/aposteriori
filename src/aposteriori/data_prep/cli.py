@@ -113,7 +113,7 @@ from aposteriori.data_prep.create_frame_data_set import (
 @click.option(
     "-ae",
     "--atom_encoder",
-    type=click.Choice(["CNO", "CNOCB", "CNOCACB", "CNOCACBQ", "CNOCACBP"]),
+    type=click.Choice(["CNO", "CNOCB", "CNOCACB", "CNOCBCA", "CNOCACBQ", "CNOCBCAQ", "CNOCACBP", "CNOCBCAP"]),
     default="CNO",
     required=True,
     help=(
@@ -268,12 +268,18 @@ def cli(
         codec = Codec.CNO()
     elif atom_encoder == "CNOCB":
         codec = Codec.CNOCB()
-    elif atom_encoder == "CNOCACB":
+    elif atom_encoder == "CNOCACB" or atom_encoder == "CNOCBCA":
         codec = Codec.CNOCACB()
-    elif atom_encoder == "CNOCACBQ":
+        if atom_encoder == "CNOCBCA":
+            warnings.warn("CNOCBCA encoding is deprecated and will be removed in future versions, atoms will be encoded as CNOCACB")
+    elif atom_encoder == "CNOCACBQ" or atom_encoder == "CNOCBCAQ":
         codec = Codec.CNOCACBQ()
-    elif atom_encoder == "CNOCACBP":
+        if atom_encoder == "CNOCBCAQ":
+            warnings.warn("CNOCBCAQ encoding is deprecated and will be removed in future versions, atoms will be encoded as CNOCACBQ")
+    elif atom_encoder == "CNOCACBP" or atom_encoder == "CNOCBCAP":
         codec = Codec.CNOCACBP()
+        if atom_encoder == "CNOCBCAP":
+            warnings.warn("CNOCBCAP encoding is deprecated and will be removed in future versions, atoms will be encoded as CNOCACBP")
     else:
         assert atom_encoder in [
             "CNO",
@@ -281,6 +287,9 @@ def cli(
             "CNOCACB",
             "CNOCACBQ",
             "CNOCACBP",
+            "CNOCBCA",
+            "CNOCBCAQ",
+            "CNOCBCAP",
         ], f"Expected encoder to be CNO, CNOCB, CNOCACB, CNOCACBQ, CNOCACBP, but got {atom_encoder}"
 
     make_frame_dataset(
