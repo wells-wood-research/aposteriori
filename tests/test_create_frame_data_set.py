@@ -370,7 +370,7 @@ def test_make_frame_dataset_as_gaussian_cnocacbq():
     test_file = TEST_DATA_DIR / "1ubq.pdb"
     frame_edge_length = 18.0
     voxels_per_side = 31
-    codec = cfds.Codec.CNOCBCAQ()
+    codec = cfds.Codec.CNOCACBQ()
     ampal_1ubq = ampal.load_pdb(str(test_file))
     ampal_1ubq2 = ampal.load_pdb(str(test_file))
 
@@ -437,7 +437,7 @@ def test_make_frame_dataset_as_gaussian_cnocacbp():
     test_file = TEST_DATA_DIR / "1ubq.pdb"
     frame_edge_length = 18.0
     voxels_per_side = 31
-    codec = cfds.Codec.CNOCBCAP()
+    codec = cfds.Codec.CNOCACBP()
 
     ampal_1ubq = ampal.load_pdb(str(test_file))
     ampal_1ubq2 = ampal.load_pdb(str(test_file))
@@ -544,7 +544,7 @@ def test_cb_atom_filter(residue_number: int):
 def test_add_gaussian_at_position():
     main_matrix = np.zeros((5, 5, 5, 5), dtype=np.float)
     modifiers_triple = (0, 0, 0)
-    codec = cfds.Codec.CNOCBCA()
+    codec = cfds.Codec.CNOCACB()
 
     secondary_matrix, atom_idx = codec.encode_gaussian_atom("C", modifiers_triple)
     atom_coord = (1, 1, 1)

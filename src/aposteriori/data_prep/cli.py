@@ -113,11 +113,12 @@ from aposteriori.data_prep.create_frame_data_set import (
 @click.option(
     "-ae",
     "--atom_encoder",
-    type=click.Choice(["CNO", "CNOCB", "CNOCBCA", "CNOCBCAQ", "CNOCBCAP"]),
+    type=click.Choice(["CNO", "CNOCB", "CNOCACB", "CNOCACBQ", "CNOCACBP"]),
     default="CNO",
     required=True,
     help=(
-        "Encodes atoms in different channels, depending on atom types. Default is CNO, other options are ´CNOCB´ and `CNOCBCA` to encode the Cb or Cb and Ca in different channels respectively."
+        "Encodes atoms in different channels, depending on atom types. Default is CNO, other options are ´CNOCB´ and `CNOCACB` to encode the Cb or Cb and Ca in different channels respectively. "
+        "Charged and polar versions can be used with CNOCACBQ and CNOCACBP respectively."
     ),
 )
 @click.option(
@@ -267,20 +268,20 @@ def cli(
         codec = Codec.CNO()
     elif atom_encoder == "CNOCB":
         codec = Codec.CNOCB()
-    elif atom_encoder == "CNOCBCA":
-        codec = Codec.CNOCBCA()
-    elif atom_encoder == "CNOCBCAQ":
-        codec = Codec.CNOCBCAQ()
-    elif atom_encoder == "CNOCBCAP":
-        codec = Codec.CNOCBCAP()
+    elif atom_encoder == "CNOCACB":
+        codec = Codec.CNOCACB()
+    elif atom_encoder == "CNOCACBQ":
+        codec = Codec.CNOCACBQ()
+    elif atom_encoder == "CNOCACBP":
+        codec = Codec.CNOCACBP()
     else:
         assert atom_encoder in [
             "CNO",
             "CNOCB",
-            "CNOCBCA",
-            "CNOCBCAQ",
-            "CNOCBCAP",
-        ], f"Expected encoder to be CNO, CNOCB, CNOCBCA, CNOCBCAQ, CNOCBCAP, but got {atom_encoder}"
+            "CNOCACB",
+            "CNOCACBQ",
+            "CNOCACBP",
+        ], f"Expected encoder to be CNO, CNOCB, CNOCACB, CNOCACBQ, CNOCACBP, but got {atom_encoder}"
 
     make_frame_dataset(
         structure_files=structure_files,
