@@ -263,34 +263,30 @@ def cli(
                 f"{structure_file_folder} file not found. Did you specify the -d argument for the download file? If so, check your spelling."
             )
             sys.exit()
-    # Create Codec:
-    if atom_encoder == "CNO":
-        codec = Codec.CNO()
-    elif atom_encoder == "CNOCB":
-        codec = Codec.CNOCB()
-    elif atom_encoder == "CNOCACB" or atom_encoder == "CNOCBCA":
-        codec = Codec.CNOCACB()
-        if atom_encoder == "CNOCBCA":
-            warnings.warn("CNOCBCA encoding is deprecated and will be removed in future versions, atoms will be encoded as CNOCACB")
-    elif atom_encoder == "CNOCACBQ" or atom_encoder == "CNOCBCAQ":
-        codec = Codec.CNOCACBQ()
-        if atom_encoder == "CNOCBCAQ":
-            warnings.warn("CNOCBCAQ encoding is deprecated and will be removed in future versions, atoms will be encoded as CNOCACBQ")
-    elif atom_encoder == "CNOCACBP" or atom_encoder == "CNOCBCAP":
-        codec = Codec.CNOCACBP()
-        if atom_encoder == "CNOCBCAP":
-            warnings.warn("CNOCBCAP encoding is deprecated and will be removed in future versions, atoms will be encoded as CNOCACBP")
-    else:
-        assert atom_encoder in [
-            "CNO",
-            "CNOCB",
-            "CNOCACB",
-            "CNOCACBQ",
-            "CNOCACBP",
-            "CNOCBCA",
-            "CNOCBCAQ",
-            "CNOCBCAP",
-        ], f"Expected encoder to be CNO, CNOCB, CNOCACB, CNOCACBQ, CNOCACBP, but got {atom_encoder}"
+    # Mapping of current atom encoders to their corresponding Codec classes
+    current_codec_mapping = {
+        "CNO": Codec.CNO,
+        "CNOCB": Codec.CNOCB,
+        "CNOCACB": Codec.CNOCACB,
+        "CNOCACBQ": Codec.CNOCACBQ,
+        "CNOCACBP": Codec.CNOCACBP
+    }
+
+    # List of deprecated encodings and their replacements
+    deprecated_encodings = {
+        "CNOCBCA": "CNOCACB",
+        "CNOCBCAQ": "CNOCACBQ",
+        "CNOCBCAP": "CNOCACBP"
+    }
+
+    # Create Codec based on atom_encoder
+    if atom_encoder in current_codec_mapping:
+        codec = current_codec_mapping[atom_encoder]()
+    elif atom_encoder in deprecated_encodings:
+        replacement = deprecated_encodings[atom_encoder]
+        codec = current_codec_mapping[replacement]()
+        warnings.warn(f"{atom_encoder} encoding is deprecated and will be removed in future versions, "
+                    f"atoms will be encoded as {replacement}")
 
     make_frame_dataset(
         structure_files=structure_files,
