@@ -113,7 +113,18 @@ from aposteriori.data_prep.create_frame_data_set import (
 @click.option(
     "-ae",
     "--atom_encoder",
-    type=click.Choice(["CNO", "CNOCB", "CNOCACB", "CNOCBCA", "CNOCACBQ", "CNOCBCAQ", "CNOCACBP", "CNOCBCAP"]),
+    type=click.Choice(
+        [
+            "CNO",
+            "CNOCB",
+            "CNOCACB",
+            "CNOCBCA",
+            "CNOCACBQ",
+            "CNOCBCAQ",
+            "CNOCACBP",
+            "CNOCBCAP",
+        ]
+    ),
     default="CNO",
     required=True,
     help=(
@@ -269,14 +280,14 @@ def cli(
         "CNOCB": Codec.CNOCB,
         "CNOCACB": Codec.CNOCACB,
         "CNOCACBQ": Codec.CNOCACBQ,
-        "CNOCACBP": Codec.CNOCACBP
+        "CNOCACBP": Codec.CNOCACBP,
     }
 
     # List of deprecated encodings and their replacements
     deprecated_encodings = {
         "CNOCBCA": "CNOCACB",
         "CNOCBCAQ": "CNOCACBQ",
-        "CNOCBCAP": "CNOCACBP"
+        "CNOCBCAP": "CNOCACBP",
     }
 
     # Create Codec based on atom_encoder
@@ -285,8 +296,10 @@ def cli(
     elif atom_encoder in deprecated_encodings:
         replacement = deprecated_encodings[atom_encoder]
         codec = current_codec_mapping[replacement]()
-        warnings.warn(f"{atom_encoder} encoding is deprecated and will be removed in future versions, "
-                    f"atoms will be encoded as {replacement}")
+        warnings.warn(
+            f"{atom_encoder} encoding is deprecated and will be removed in future versions, "
+            f"atoms will be encoded as {replacement}"
+        )
 
     make_frame_dataset(
         structure_files=structure_files,
