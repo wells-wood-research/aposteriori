@@ -100,16 +100,16 @@ class Codec:
         return cls(["C", "N", "O", "CB"])
 
     @classmethod
-    def CNOCBCA(cls):
-        return cls(["C", "N", "O", "CB", "CA"])
+    def CNOCACB(cls):
+        return cls(["C", "N", "O", "CA", "CB"])
 
     @classmethod
-    def CNOCBCAQ(cls):
-        return cls(["C", "N", "O", "CB", "CA", "Q"])
+    def CNOCACBQ(cls):
+        return cls(["C", "N", "O", "CA", "CB", "Q"])
 
     @classmethod
-    def CNOCBCAP(cls):
-        return cls(["C", "N", "O", "CB", "CA", "P"])
+    def CNOCACBP(cls):
+        return cls(["C", "N", "O", "CA", "CB", "P"])
 
     def encode_atom(self, atom_label: str) -> np.ndarray:
         """
@@ -726,13 +726,13 @@ def create_residue_frame(
     # Check whether central atom is C:
     if "CA" in codec.atomic_labels:
         if voxels_as_gaussian:
-            np.testing.assert_array_less(frame[centre, centre, centre][4], 1)
+            np.testing.assert_array_less(frame[centre, centre, centre][3], 1)
             assert (
-                0 < frame[centre, centre, centre][4] <= 1
+                0 < frame[centre, centre, centre][3] <= 1
             ), f"The central atom value should be between 0 and 1 but was {frame[centre, centre, centre][4]}"
         else:
             assert (
-                frame[centre, centre, centre][4] == 1
+                frame[centre, centre, centre][3] == 1
             ), f"The central atom should be Carbon, but it is {frame[centre, centre, centre]}."
     else:
         if voxels_as_gaussian:

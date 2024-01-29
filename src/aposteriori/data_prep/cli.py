@@ -113,11 +113,23 @@ from aposteriori.data_prep.create_frame_data_set import (
 @click.option(
     "-ae",
     "--atom_encoder",
-    type=click.Choice(["CNO", "CNOCB", "CNOCBCA", "CNOCBCAQ", "CNOCBCAP"]),
+    type=click.Choice(
+        [
+            "CNO",
+            "CNOCB",
+            "CNOCACB",
+            "CNOCBCA",
+            "CNOCACBQ",
+            "CNOCBCAQ",
+            "CNOCACBP",
+            "CNOCBCAP",
+        ]
+    ),
     default="CNO",
     required=True,
     help=(
-        "Encodes atoms in different channels, depending on atom types. Default is CNO, other options are ´CNOCB´ and `CNOCBCA` to encode the Cb or Cb and Ca in different channels respectively."
+        "Encodes atoms in different channels, depending on atom types. Default is CNO, other options are ´CNOCB´ and `CNOCACB` to encode the Cb or Cb and Ca in different channels respectively. "
+        "Charged and polar versions can be used with CNOCACBQ and CNOCACBP respectively."
     ),
 )
 @click.option(
@@ -262,25 +274,32 @@ def cli(
                 f"{structure_file_folder} file not found. Did you specify the -d argument for the download file? If so, check your spelling."
             )
             sys.exit()
-    # Create Codec:
-    if atom_encoder == "CNO":
-        codec = Codec.CNO()
-    elif atom_encoder == "CNOCB":
-        codec = Codec.CNOCB()
-    elif atom_encoder == "CNOCBCA":
-        codec = Codec.CNOCBCA()
-    elif atom_encoder == "CNOCBCAQ":
-        codec = Codec.CNOCBCAQ()
-    elif atom_encoder == "CNOCBCAP":
-        codec = Codec.CNOCBCAP()
-    else:
-        assert atom_encoder in [
-            "CNO",
-            "CNOCB",
-            "CNOCBCA",
-            "CNOCBCAQ",
-            "CNOCBCAP",
-        ], f"Expected encoder to be CNO, CNOCB, CNOCBCA, CNOCBCAQ, CNOCBCAP, but got {atom_encoder}"
+    # Mapping of current atom encoders to their corresponding Codec classes
+    current_codec_mapping = {
+        "CNO": Codec.CNO,
+        "CNOCB": Codec.CNOCB,
+        "CNOCACB": Codec.CNOCACB,
+        "CNOCACBQ": Codec.CNOCACBQ,
+        "CNOCACBP": Codec.CNOCACBP,
+    }
+
+    # List of deprecated encodings and their replacements
+    deprecated_encodings = {
+        "CNOCBCA": "CNOCACB",
+        "CNOCBCAQ": "CNOCACBQ",
+        "CNOCBCAP": "CNOCACBP",
+    }
+
+    # Create Codec based on atom_encoder
+    if atom_encoder in current_codec_mapping:
+        codec = current_codec_mapping[atom_encoder]()
+    elif atom_encoder in deprecated_encodings:
+        replacement = deprecated_encodings[atom_encoder]
+        codec = current_codec_mapping[replacement]()
+        warnings.warn(
+            f"{atom_encoder} encoding is deprecated and will be removed in future versions, "
+            f"atoms will be encoded as {replacement}"
+        )
 
     make_frame_dataset(
         structure_files=structure_files,
