@@ -450,7 +450,7 @@ def convert_atom_to_gaussian_density(
             # Calculate Density:
             voxel_density = np.exp(
                 -((vx - x) ** 2 + (vy - y) ** 2 + (vz - z) ** 2)
-                / wanderwaal_radius**2
+                / wanderwaal_radius ** 2
             )
             # Add density to frame:
             gaussian_frame[vy, vx, vz] = voxel_density
@@ -583,12 +583,25 @@ def add_gaussian_at_position(
     return density_frame
 
 
+def charge_polar_property(res: ampal.Residue, codec: Codec):
+    if "P" in codec.atomic_labels:
+        if res.mol_letter in standard_amino_acids.keys():
+            res_property = -1 if polarity_Zimmerman[res.mol_letter] < 20 else 1
+        else:
+            res_property = 0
+    elif "Q" in codec.atomic_labels:
+        res_property = residue_charge[res.mol_letter]
+    else:
+        res_property = 0
+    return res_property
+
+
 def create_residue_frame(
     residue: ampal.Residue,
     frame_edge_length: float,
     voxels_per_side: int,
     encode_cb: bool,
-    codec: object,
+    codec: Codec,
     voxels_as_gaussian: bool = False,
 ) -> np.ndarray:
     """Creates a discrete representation of a volume of space around a residue.
@@ -634,15 +647,6 @@ def create_residue_frame(
     voxel_edge_length = frame_edge_length / voxels_per_side
     assembly = residue.parent.parent
     chain = residue.parent
-    if "P" in codec.atomic_labels:
-        if residue.mol_letter in standard_amino_acids.keys():
-            res_property = -1 if polarity_Zimmerman[residue.mol_letter] < 20 else 1
-        else:
-            res_property = 0
-        # res_property = -1 if res_property < 20 else 1
-    elif "Q" in codec.atomic_labels:
-        res_property = residue_charge[residue.mol_letter]
-
     align_to_residue_plane(residue)
 
     frame = np.zeros(
@@ -682,6 +686,7 @@ def create_residue_frame(
                 np.testing.assert_array_equal(
                     frame[indices], np.array([False] * len(frame[indices]), dtype=bool)
                 )
+        res_property = charge_polar_property(res, codec)
         # Encode atoms:
         if voxels_as_gaussian:
             modifiers_triple = calculate_atom_coord_modifier_within_voxel(
@@ -699,11 +704,7 @@ def create_residue_frame(
                 atom_coord=indices,
                 atom_idx=atom_idx,
             )
-            if (
-                "Q" in codec.atomic_labels
-                or "P" in codec.atomic_labels
-                and res_property != 0
-            ):
+            if (atom.res_label == "CA") and (res_property != 0):
                 gaussian_atom = gaussian_matrix[:, :, :, atom_idx] * float(res_property)
                 # Add at position:
                 frame = add_gaussian_at_position(
@@ -1640,7 +1641,7 @@ def make_frame_dataset(
     print(f"Will attempt to process {total_files} structure file/s.")
     print(f"Output file will be written to `{output_file_path.resolve()}`.")
     voxel_edge_length = frame_edge_length / voxels_per_side
-    max_voxel_distance = np.sqrt(voxel_edge_length**2 * 3)
+    max_voxel_distance = np.sqrt(voxel_edge_length ** 2 * 3)
     print(f"Frame edge length = {frame_edge_length:.2f} A")
     print(f"Voxels per side = {voxels_per_side}")
     print(f"Voxels will have an edge length of {voxel_edge_length:.2f} A.")
@@ -1672,3 +1673,18 @@ def make_frame_dataset(
 
 
 # }}}
+
+# if __name__ == "__main__":
+#     structure = ampal.load_pdb(
+#         "/Users/leo/Documents/code/aposteriori/tests/testing_files/pdb_files/1ctf.pdb"
+#     )
+#     for atom in structure.get_atoms():
+#         if not keep_sidechain_cb_atom_filter(atom):
+#             del atom.parent.atoms[atom.res_label]
+#             del atom
+#     positive_residue = structure[0][31]
+#     negative_residue = structure[0][32]
+#     codec = Codec.CNOCACBQ()
+#     # positive_frame = create_residue_frame(positive_residue, 21, 21, True, codec, True)
+#     negative_frame = create_residue_frame(negative_residue, 21, 21, True, codec, True)
+#     raise ValueError
