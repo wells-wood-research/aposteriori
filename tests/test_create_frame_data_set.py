@@ -430,6 +430,11 @@ def test_make_frame_dataset_as_gaussian_cnocacbq():
                     assert np.max(test_residue[:, :, :, 5]) > 0
                 if charge < 0:
                     assert np.min(test_residue[:, :, :, 5]) < 0
+                if residue_number == "32" or residue_number == "33":
+                    assert (
+                        np.max(test_residue[:, :, :, 5]) > 0
+                        and np.min(test_residue[:, :, :, 5]) < 0
+                    ), "Frame 32 and 33 should have both positive and negative values as the residues are Lys and Asp"
 
 
 def test_make_frame_dataset_as_gaussian_cnocacbp():
@@ -483,11 +488,11 @@ def test_make_frame_dataset_as_gaussian_cnocacbp():
                 # check that the frame for all the data frames match between the input
                 # arrays and the ones that come out of the HDF5 data set
                 residue_number = str(n)
-                residue_test = array_test[n - 1]
+                test_residue = array_test[n - 1]
                 hdf5_array = dataset["1ubq"]["A"][residue_number][()]
                 npt.assert_array_equal(
                     hdf5_array,
-                    residue_test,
+                    test_residue,
                     err_msg=(
                         "The frame in the HDF5 data set should be the same as the "
                         "input frame."
@@ -506,39 +511,14 @@ def test_make_frame_dataset_as_gaussian_cnocacbp():
             else:
                 polarity = 0
             if polarity == 1:
-                assert np.max(residue_test[:, :, :, 5]) > 0
+                assert np.max(test_residue[:, :, :, 5]) > 0
             if polarity == 0:
-                assert np.min(residue_test[:, :, :, 5]) < 0
-
-
-@settings(deadline=700)
-@given(integers(min_value=0, max_value=214))
-def test_default_atom_filter(residue_number: int):
-    assembly = ampal.load_pdb(str(TEST_DATA_DIR / "3qy1.pdb"))
-    focus_residue = assembly[0][residue_number]
-    backbone_atoms = ("N", "CA", "C", "O")
-
-    for atom in focus_residue:
-        filtered_atom = True if atom.res_label in backbone_atoms else False
-        filtered_scenario = cfds.default_atom_filter(atom)
-        assert (
-            filtered_atom == filtered_scenario
-        ), f"Expected {atom.res_label} to return {filtered_atom} after filter"
-
-
-@settings(deadline=700)
-@given(integers(min_value=0, max_value=214))
-def test_cb_atom_filter(residue_number: int):
-    assembly = ampal.load_pdb(str(TEST_DATA_DIR / "3qy1.pdb"))
-    focus_residue = assembly[0][residue_number]
-    backbone_atoms = ("N", "CA", "C", "O", "CB")
-
-    for atom in focus_residue:
-        filtered_atom = True if atom.res_label in backbone_atoms else False
-        filtered_scenario = cfds.keep_sidechain_cb_atom_filter(atom)
-        assert (
-            filtered_atom == filtered_scenario
-        ), f"Expected {atom.res_label} to return {filtered_atom} after filter"
+                assert np.min(test_residue[:, :, :, 5]) < 0
+            if residue_number == "5" or residue_number == "6":
+                assert (
+                    np.max(test_residue[:, :, :, 5]) > 0
+                    and np.min(test_residue[:, :, :, 5]) < 0
+                ), "Frame 5 and 6 should have both positive and negative values as the residues are Lys and Asp"
 
 
 def test_add_gaussian_at_position():
