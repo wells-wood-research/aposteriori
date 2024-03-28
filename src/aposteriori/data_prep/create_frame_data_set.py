@@ -704,7 +704,7 @@ def create_residue_frame(
                 atom_coord=indices,
                 atom_idx=atom_idx,
             )
-            if (atom.res_label == "CA") and (res_property != 0):
+            if res_property != 0:
                 gaussian_atom = gaussian_matrix[:, :, :, atom_idx] * float(res_property)
                 # Add at position:
                 frame = add_gaussian_at_position(
