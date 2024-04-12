@@ -520,6 +520,35 @@ def test_make_frame_dataset_as_gaussian_cnocacbp():
                     and np.min(test_residue[:, :, :, 5]) < 0
                 ), "Frame 5 and 6 should have both positive and negative values as the residues are Lys and Asp"
 
+@settings(deadline=700)
+@given(integers(min_value=0, max_value=214))
+def test_default_atom_filter(residue_number: int):
+    assembly = ampal.load_pdb(str(TEST_DATA_DIR / "3qy1.pdb"))
+    focus_residue = assembly[0][residue_number]
+    backbone_atoms = ("N", "CA", "C", "O")
+
+    for atom in focus_residue:
+        filtered_atom = True if atom.res_label in backbone_atoms else False
+        filtered_scenario = cfds.default_atom_filter(atom)
+        assert (
+            filtered_atom == filtered_scenario
+        ), f"Expected {atom.res_label} to return {filtered_atom} after filter"
+
+
+@settings(deadline=700)
+@given(integers(min_value=0, max_value=214))
+def test_cb_atom_filter(residue_number: int):
+    assembly = ampal.load_pdb(str(TEST_DATA_DIR / "3qy1.pdb"))
+    focus_residue = assembly[0][residue_number]
+    backbone_atoms = ("N", "CA", "C", "O", "CB")
+
+    for atom in focus_residue:
+        filtered_atom = True if atom.res_label in backbone_atoms else False
+        filtered_scenario = cfds.keep_sidechain_cb_atom_filter(atom)
+        assert (
+            filtered_atom == filtered_scenario
+        ), f"Expected {atom.res_label} to return {filtered_atom} after filter"
+
 
 def test_add_gaussian_at_position():
     main_matrix = np.zeros((5, 5, 5, 5), dtype=np.float)
