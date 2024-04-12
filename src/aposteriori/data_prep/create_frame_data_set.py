@@ -1673,18 +1673,3 @@ def make_frame_dataset(
 
 
 # }}}
-
-# if __name__ == "__main__":
-#     structure = ampal.load_pdb(
-#         "/Users/leo/Documents/code/aposteriori/tests/testing_files/pdb_files/1ctf.pdb"
-#     )
-#     for atom in structure.get_atoms():
-#         if not keep_sidechain_cb_atom_filter(atom):
-#             del atom.parent.atoms[atom.res_label]
-#             del atom
-#     positive_residue = structure[0][31]
-#     negative_residue = structure[0][32]
-#     codec = Codec.CNOCACBQ()
-#     # positive_frame = create_residue_frame(positive_residue, 21, 21, True, codec, True)
-#     negative_frame = create_residue_frame(negative_residue, 21, 21, True, codec, True)
-#     raise ValueError
