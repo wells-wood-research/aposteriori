@@ -15,8 +15,6 @@
 
 ### PyPI
 
-_Coming soon..._
-
 ```sh
 pip install aposteriori
 ```
