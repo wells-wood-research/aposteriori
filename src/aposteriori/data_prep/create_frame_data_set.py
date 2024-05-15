@@ -145,7 +145,7 @@ class Codec:
 
     def encode_gaussian_atom(
         self, atom_label: str, modifiers_triple: t.Tuple[float, float, float]
-    ) -> (np.ndarray, int):
+    ) -> tuple[np.ndarray, int]:
         """
         Encodes atom as a 3x3 gaussian with length of encoder length. Only the
         C, N and O atoms are represented in gaussian form. If Ca and Cb are
@@ -1255,7 +1255,7 @@ def _select_pdb_chain(
     verbosity: int,
     return_chain_path: bool = True,
     nmr_state: int = None,
-) -> (pathlib.Path, ampal.Assembly):
+) -> tuple[pathlib.Path, ampal.Assembly]:
     """
     Select a chain from a pdb file. The chain will remove the original pdb file.
     At the moment we only support the selection of one chain at the time, meaning
