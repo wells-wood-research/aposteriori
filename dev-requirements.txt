@@ -4,5 +4,5 @@ h5py==3.8.0
 hypothesis==6.91.0
 numpy
 pytest==6.2.5
-setuptools==67.8.0
+setuptools==70.0.0
 flake8
