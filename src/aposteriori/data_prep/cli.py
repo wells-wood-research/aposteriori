@@ -7,10 +7,11 @@ import click
 
 from aposteriori.data_prep.create_frame_data_set import (
     Codec,
-    StrOrPath,
-    default_atom_filter,
-    download_pdb_from_csv_file,
     make_frame_dataset,
+    StrOrPath,
+    organic_cofactors,
+    keep_sidechains,
+    download_pdb_from_csv_file,
 )
 
 
@@ -27,6 +28,33 @@ from aposteriori.data_prep.create_frame_data_set import (
     default=".",
     help=("Path to folder where output will be written. Default = `.`"),
 )
+@click.option(
+    "-keep_side_chain",
+    "--keep_side_chain_portion",
+    type=float,
+    default=0,
+    help=(
+        "Determines the percentage of residues for which the side chains are kept. By default, no side-chain information is kept (Value is 0)"
+        "The value should be set between 0 and 1"
+    ),
+)
+@click.option(
+    "--cfile",
+    default="",
+    type=click.Path(),
+    help=(
+        "Path to a Pieces format file used to filter the dataset to specific chains in"
+        "specific files. All other PDB files included in the input will be ignored."
+    ),
+)
+# @click.option(
+#     "--residues_wo_sidechains",
+#     type=click.Path(),
+#     help=(
+#         "Path to a Pieces format file used to filter the dataset to specific chains in"
+#         "specific files. All other PDB files included in the input will be ignored."
+#     ),
+# )
 @click.option(
     "-n",
     "--name",
@@ -123,6 +151,8 @@ from aposteriori.data_prep.create_frame_data_set import (
             "CNOCBCAQ",
             "CNOCACBP",
             "CNOCBCAP",
+            "BackSideOrg",
+            "BackCBSideOrg",
         ]
     ),
     default="CNO",
@@ -198,6 +228,9 @@ def cli(
     compression_gzip: bool,
     voxelise_all_states: bool,
     tag_rotamers: bool,
+    #residues_wo_sidechains: str,
+    cfile: str,
+    keep_side_chain_portion: float,
 ):
     """Creates a dataset of voxelized amino acid frames.
 
@@ -281,6 +314,8 @@ def cli(
         "CNOCACB": Codec.CNOCACB,
         "CNOCACBQ": Codec.CNOCACBQ,
         "CNOCACBP": Codec.CNOCACBP,
+        "BackSideOrg": Codec.BackSideOrg,
+        "BackCBSideOrg": Codec.BackCBSideOrg,
     }
 
     # List of deprecated encodings and their replacements
@@ -300,15 +335,21 @@ def cli(
             f"{atom_encoder} encoding is deprecated and will be removed in future versions, "
             f"atoms will be encoded as {replacement}"
         )
-
+    else:
+        print(
+            f"Expected encoder to be CNO, CNOCB, CNOCACB, BackSideOrg or BackCBSideOrg but got {atom_encoder}"
+        )
     make_frame_dataset(
         structure_files=structure_files,
         output_folder=output_folder,
         name=name,
         frame_edge_length=frame_edge_length,
         voxels_per_side=voxels_per_side,
+        keep_side_chain_portion=keep_side_chain_portion,
+    #    residues_wo_sidechains=residues_wo_sidechains,
+        cfile=cfile,
         codec=codec,
-        atom_filter_fn=default_atom_filter,
+        atom_filter_fn=keep_sidechains,
         pieces_filter_file=pieces_filter_file,
         processes=processes,
         is_pdb_gzipped=is_pdb_gzipped,

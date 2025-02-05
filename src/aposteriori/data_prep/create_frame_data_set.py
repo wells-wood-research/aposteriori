@@ -3,32 +3,36 @@
 In this type of dataset, all individual entries are stored separately in a flat
 structure.
 """
+
 import csv
 import glob
 import gzip
+import os
+import yaml
 import multiprocessing as mp
 import pathlib
+import random
 import sys
 import time
 import typing as t
 import urllib
 import warnings
 from dataclasses import dataclass
-from itertools import repeat
 from multiprocessing import Pool
-
+from itertools import repeat
 import ampal
 import ampal.geometry as geometry
 import h5py
 import numpy as np
 from ampal.amino_acids import residue_charge, polarity_Zimmerman, standard_amino_acids
-
 from aposteriori.config import (
     ATOM_VANDERWAAL_RADII,
     MAKE_FRAME_DATASET_VER,
+    PDB_PATH,
     PDB_REQUEST_URL,
     UNCOMMON_RESIDUE_DICT,
 )
+import random as rnd
 
 
 # {{{ Types
@@ -51,6 +55,9 @@ class DatasetMetadata:
     atom_filter_fn: str
     residue_encoder: t.List[str]
     frame_edge_length: float
+    keep_side_chain_portion: float
+    # residues_wo_sidechains: pathlib.Path
+    cfile: pathlib.Path
     voxels_as_gaussian: bool
 
     @classmethod
@@ -78,6 +85,9 @@ ChainDict = t.Dict[str, t.List[ResidueResult]]
 
 # {{{ Residue Frame Creation
 class Codec:
+    backsideorg = False
+    backcbsideorg = False
+
     def __init__(self, atomic_labels: t.List[str]):
         # Set attributes:
         self.atomic_labels = atomic_labels
@@ -111,6 +121,16 @@ class Codec:
     def CNOCACBP(cls):
         return cls(["C", "N", "O", "CA", "CB", "P"])
 
+    @classmethod
+    def BackSideOrg(cls):
+        cls.backsideorg = True
+        return cls(["C", "N", "O", "CA", "CS", "NS", "OS", "SS"])
+
+    @classmethod
+    def BackCBSideOrg(cls):
+        cls.backcbsideorg = True
+        return cls(["C", "N", "O", "CA", "CB", "CS", "NS", "OS", "SS"])
+
     def encode_atom(self, atom_label: str) -> np.ndarray:
         """
         Encodes atoms in a boolean array depending on the type of encoding chosen.
@@ -132,10 +152,24 @@ class Codec:
         if atom_label in self.label_to_encoding.keys():
             atom_idx = self.label_to_encoding[atom_label]
             encoded_atom[atom_idx] = True
-        # Encode CA as C in case it is not in the labels:
         elif atom_label == "CA":
             atom_idx = self.label_to_encoding["C"]
             encoded_atom[atom_idx] = True
+        # Encode side chain atoms or organic molecule atoms:
+        elif Codec.backsideorg or Codec.backcbsideorg:
+            if atom_label.startswith("C"):
+                atom_idx = self.label_to_encoding["CS"]
+                encoded_atom[atom_idx] = True
+            elif atom_label.startswith("N"):
+                atom_idx = self.label_to_encoding["NS"]
+                encoded_atom[atom_idx] = True
+            elif atom_label.startswith("O"):
+                atom_idx = self.label_to_encoding["OS"]
+                encoded_atom[atom_idx] = True
+            elif atom_label.startswith("S"):
+                atom_idx = self.label_to_encoding["SS"]
+                encoded_atom[atom_idx] = True
+
         else:
             warnings.warn(
                 f"{atom_label} not found in {self.atomic_labels} encoding. Returning None."
@@ -162,7 +196,7 @@ class Codec:
 
         Returns
         -------
-        atom_encoding: np.ndarray
+        atom_encoding: np.ndarrayk
             Boolean array with atom encoding of shape (3, 3, 3, encoder_length,)
 
         """
@@ -177,32 +211,38 @@ class Codec:
             if (atom_label.upper() == "CA") or (atom_label.upper() == "CB"):
                 atom_label = "C"
                 atom_idx = self.label_to_encoding[atom_label]
+
         elif self.encoder_length == 4:
             # In this scenario, Ca is a carbon atom but Cb has a separate channel
             if atom_label.upper() == "CA":
                 atom_label = "C"
                 atom_idx = self.label_to_encoding[atom_label]
-        else:
-            raise ValueError(
-                f"{atom_label} not found in {self.atomic_labels} encoding."
-            )
-        # If label to encode is C, N, O:
-        if atom_idx in ATOM_VANDERWAAL_RADII.keys():
+        elif Codec.backsideorg or Codec.backcbsideorg:
+            # Encode side chain atoms or organic molecule atoms:
+            if atom_label.startswith("C"):
+                atom_label = "CS"
+                atom_idx = self.label_to_encoding[atom_label]
+            if atom_label.startswith("N"):
+                atom_label = "NS"
+                atom_idx = self.label_to_encoding[atom_label]
+            if atom_label.startswith("O"):
+                atom_label = "OS"
+                atom_idx = self.label_to_encoding[atom_label]
+            if atom_label.startswith("S"):
+                atom_label = "SS"
+                atom_idx = self.label_to_encoding[atom_label]
+
+        # If label to encode is C, N, O or S:
+        if atom_label in ATOM_VANDERWAAL_RADII.keys():
             # Get encoding:
-            atomic_radius = ATOM_VANDERWAAL_RADII[atom_idx]
+            atomic_radius = ATOM_VANDERWAAL_RADII[atom_label]
             atom_to_encode = convert_atom_to_gaussian_density(
                 modifiers_triple, atomic_radius
             )
             # Add to original atom:
             encoded_atom[:, :, :, atom_idx] += atom_to_encode
         # If label encodes Cb and Ca as separate channels (ie, not CNO):
-        elif atom_label.upper() in self.label_to_encoding.keys():
-            # Get encoding:
-            atomic_radius = ATOM_VANDERWAAL_RADII[0]
-            atom_to_encode = convert_atom_to_gaussian_density(
-                modifiers_triple, atomic_radius
-            )
-            encoded_atom[:, :, :, atom_idx] += atom_to_encode
+
         else:
             raise ValueError(
                 f"{atom_label} not found in {self.atomic_labels} encoding. Returning empty array."
@@ -449,8 +489,7 @@ def convert_atom_to_gaussian_density(
             vy, vx, vz = voxel_coord
             # Calculate Density:
             voxel_density = np.exp(
-                -((vx - x) ** 2 + (vy - y) ** 2 + (vz - z) ** 2)
-                / wanderwaal_radius ** 2
+                -((vx - x) ** 2 + (vy - y) ** 2 + (vz - z) ** 2) / wanderwaal_radius**2
             )
             # Add density to frame:
             gaussian_frame[vy, vx, vz] = voxel_density
@@ -597,10 +636,11 @@ def charge_polar_property(res: ampal.Residue, codec: Codec):
 
 
 def create_residue_frame(
+    atom_filter_fn,
     residue: ampal.Residue,
     frame_edge_length: float,
-    voxels_per_side: int,
     encode_cb: bool,
+    voxels_per_side: int,
     codec: Codec,
     voxels_as_gaussian: bool = False,
 ) -> np.ndarray:
@@ -626,6 +666,8 @@ def create_residue_frame(
         Codec object with encoding instructions.
     voxels_as_gaussian: bool
         Whether to encode voxels as gaussians.
+    keep_side_chain_portion: float
+        Determines portion of residues for which the side chain information is kept
 
     Returns
     -------
@@ -648,16 +690,20 @@ def create_residue_frame(
     assembly = residue.parent.parent
     chain = residue.parent
     align_to_residue_plane(residue)
-
     frame = np.zeros(
         (voxels_per_side, voxels_per_side, voxels_per_side, codec.encoder_length),
     )
+    # Encode the residue information separately, will be further updated later.
+    #  resinfo = np.zeros(
+    #     (voxels_per_side, voxels_per_side, voxels_per_side, 2),
+    # )
     # Change frame type to float if gaussian else use bool:
-    frame = frame.astype(np.float16) if voxels_as_gaussian else frame.astype(np.bool)
+    frame = frame.astype(np.float16) if voxels_as_gaussian else frame.astype(np.bool_)
     # iterate through all atoms within the frame
+
     for atom in (
         a
-        for a in assembly.get_atoms(ligands=False)
+        for a in assembly.get_atoms(ligands=True)
         if within_frame(frame_edge_length, a)
     ):
         # 3d coordinates are converted to relative indices in frame array
@@ -665,6 +711,7 @@ def create_residue_frame(
         ass = atom.parent.parent.parent
         cha = atom.parent.parent
         res = atom.parent
+
         assert (atom.element != "") or (atom.element != " "), (
             f"Atom element should not be blank:\n"
             f"{atom.chain}:{atom.res_num}:{atom.res_label}"
@@ -682,47 +729,55 @@ def create_residue_frame(
             # If the voxel is a gaussian, there may be remnants of a nearby atom
             # hence this test would fail
         if not voxels_as_gaussian:
+            # Since CB vector is added pre-voxelisation, one must remove the CB from the consideration for all channels being empty.
             if not atom.res_label == "CB":
                 np.testing.assert_array_equal(
                     frame[indices], np.array([False] * len(frame[indices]), dtype=bool)
                 )
         res_property = charge_polar_property(res, codec)
+
         # Encode atoms:
         if voxels_as_gaussian:
-            modifiers_triple = calculate_atom_coord_modifier_within_voxel(
-                atom, voxel_edge_length, indices, adjust_by=voxels_per_side // 2
-            )
-            # Get Gaussian encoding
-            gaussian_matrix, atom_idx = Codec.encode_gaussian_atom(
-                codec, atom.res_label, modifiers_triple
-            )
-            gaussian_atom = gaussian_matrix[:, :, :, atom_idx]
-            # Add at position:
-            frame = add_gaussian_at_position(
-                main_matrix=frame,
-                secondary_matrix=gaussian_atom,
-                atom_coord=indices,
-                atom_idx=atom_idx,
-            )
-            if res_property != 0:
-                gaussian_atom = gaussian_matrix[:, :, :, atom_idx] * float(res_property)
+            if res is not residue or (atom in res.backbone):
+                modifiers_triple = calculate_atom_coord_modifier_within_voxel(
+                    atom, voxel_edge_length, indices, adjust_by=voxels_per_side // 2
+                )
+                # Get Gaussian encoding
+                gaussian_matrix, atom_idx = Codec.encode_gaussian_atom(
+                    codec, atom.res_label, modifiers_triple
+                )
+                gaussian_atom = gaussian_matrix[:, :, :, atom_idx]
                 # Add at position:
                 frame = add_gaussian_at_position(
                     main_matrix=frame,
                     secondary_matrix=gaussian_atom,
                     atom_coord=indices,
-                    atom_idx=5,
-                    normalize=False,
+                    atom_idx=atom_idx,
                 )
+                if res_property != 0:
+                    gaussian_atom = gaussian_matrix[:, :, :, atom_idx] * float(
+                        res_property
+                    )
+                    # Add at position:
+                    frame = add_gaussian_at_position(
+                        main_matrix=frame,
+                        secondary_matrix=gaussian_atom,
+                        atom_coord=indices,
+                        atom_idx=5,
+                        normalize=False,
+                    )
+
         else:
-            # Encode atom as voxel:
-            frame[indices] = Codec.encode_atom(codec, atom.res_label)
-            if (
-                "Q" in codec.atomic_labels
-                or "P" in codec.atomic_labels
-                and res_property != 0
-            ):
-                frame[indices] = res_property
+            # Remove side chains from the residue that is being voxelised, and only consider their backbone atoms
+            if res is not residue or atom not in res.backbone:
+                frame[indices] = Codec.encode_atom(codec, atom.res_label)
+                if (
+                    "Q" in codec.atomic_labels
+                    or "P" in codec.atomic_labels
+                    and res_property != 0
+                ):
+                    frame[indices] = res_property
+
     centre = voxels_per_side // 2
     # Check whether central atom is C:
     if "CA" in codec.atomic_labels:
@@ -730,11 +785,11 @@ def create_residue_frame(
             np.testing.assert_array_less(frame[centre, centre, centre][3], 1)
             assert (
                 0 < frame[centre, centre, centre][3] <= 1
-            ), f"The central atom value should be between 0 and 1 but was {frame[centre, centre, centre][4]}"
-        else:
-            assert (
-                frame[centre, centre, centre][3] == 1
-            ), f"The central atom should be Carbon, but it is {frame[centre, centre, centre]}."
+            ), f"The central atom value should be between 0 and 1 but was {frame[centre, centre, centre][3]}"
+    #  else:
+    #   assert (
+    #       frame[centre, centre, centre][3] == 1
+    #    ), f"The central atom should be Carbon, but it is {frame[centre, centre, centre]}."
     else:
         if voxels_as_gaussian:
             np.testing.assert_array_less(frame[centre, centre, centre][0], 1)
@@ -742,10 +797,11 @@ def create_residue_frame(
                 0 < frame[centre, centre, centre][0] <= 1
             ), f"The central atom value should be between 0 and 1 but was {frame[centre, centre, centre][0]}"
 
-        else:
-            assert (
-                frame[centre, centre, centre][0] == 1
-            ), f"The central atom should be Carbon, but it is {frame[centre, centre, centre]}."
+    # else:
+    #    assert (
+    #       frame[centre, centre, centre][0] == 1
+    #  ), f"The central atom should be Carbon, but it is {frame[centre, centre, centre]}."
+
     return frame
 
 
@@ -758,11 +814,23 @@ def voxelise_assembly(
     chain_dict,
     frame_edge_length,
     voxels_per_side,
+    keep_side_chain_portion,
+    # residues_wo_sidechains,
+    cfile,
     encode_cb,
     codec,
     voxels_as_gaussian,
     tag_rotamers,
 ):
+
+    residue_list = []
+    print(assembly.id)
+    for chain in assembly:
+        for residue in chain:
+            residue_list.append(int(residue.id))
+    print(residue_list)
+    # Filters atoms not related to assembly:
+    print(assembly.id)
     if tag_rotamers:
         if isinstance(assembly, ampal.AmpalContainer):
             # For each assembly:
@@ -779,21 +847,68 @@ def voxelise_assembly(
         elif isinstance(assembly, ampal.Polypeptide):
             assembly.tag_sidechain_dihedrals()
 
-    # Filters atoms not related to assembly:
     total_atoms = len(list(assembly.get_atoms()))
-    for atom in assembly.get_atoms():
-        if not atom_filter_fn(atom):
-            del atom.parent.atoms[atom.res_label]
-            del atom
-    if "CB" in codec.atomic_labels:
-        if encode_cb:
-            for chain in assembly:
-                if not isinstance(chain, ampal.Polypeptide):
-                    continue
-                for residue in chain:
-                    encode_cb_prevox(residue)
-    remaining_atoms = len(list(assembly.get_atoms()))
-    print(f"{name}: Filtered {total_atoms - remaining_atoms} of {total_atoms} atoms.")
+    print(total_atoms)
+    if keep_side_chain_portion == 0:
+        for atom in assembly.get_atoms():
+            if not default_atom_filter(atom) and not organic_cofactors(atom, cfile):
+                del atom.parent.atoms[atom.res_label]
+                del atom
+        remaining_atoms = len(list(assembly.get_atoms()))
+        print(
+            f"{name}: Filtered {total_atoms - remaining_atoms} of {total_atoms} atoms."
+        )
+        if "CB" in codec.atomic_labels:
+            if encode_cb:
+                for chain in assembly:
+                    if not isinstance(chain, ampal.Polypeptide):
+                        continue
+                    for residue in chain:
+                        encode_cb_prevox(residue)
+        remaining_atoms = len(list(assembly.get_atoms()))
+        print(
+            f"{name}: Filtered amount of atoms is {total_atoms - remaining_atoms}. Total atoms to proceed with after CB addition (or none) is {remaining_atoms}"
+        )
+    else:  # This is the situation when some of the side chain information is being kept.
+        # First round of filtering is done to remove water molecules. It is useful particularly if keep_side_chain_portion is used since it will be important to accurately determine number of residues left.
+        for atom in assembly.get_atoms():
+            if not atom_filter_fn(atom) and not organic_cofactors(atom, cfile):
+                del atom.parent.atoms[atom.res_label]
+                del atom
+        remaining_atoms = len(list(assembly.get_atoms()))
+        print(
+            f"{name}: Filtered {total_atoms - remaining_atoms} of {total_atoms} atoms."
+        )
+        # Put the residues in numeric order for random picking.
+        res_index = residue_number_indexing(assembly)
+        #rand_side_chain, comment in only for training
+        # rand_side_chain = rnd.sample(
+        #     range(len(res_index)), int(len(res_index) * keep_side_chain_portion)
+        # # )
+        #Comment out for training
+        rand_side_chain = residue_list
+        for atom in assembly.get_atoms():
+            if (atom.parent.id) not in rand_side_chain:
+                if not default_atom_filter(atom) and not organic_cofactors(atom, cfile):
+                    del atom.parent.atoms[atom.res_label]
+                    del atom
+            elif isinstance(atom.parent, ampal.Ligand):
+                if not atom_filter_fn(atom) and not organic_cofactors(atom, cfile):
+                    del atom.parent.atoms[atom.res_label]
+                    del atom
+        if "CB" in codec.atomic_labels:
+            if encode_cb:
+                for chain in assembly:
+                    for residue in chain:
+                        if isinstance(residue, ampal.Residue):
+                            encode_cb_prevox(residue)
+                        else:
+                            continue
+        remaining_atoms = len(list(assembly.get_atoms()))
+        print(
+            f"{name}: Total atoms to proceed with after CB addition (or none) is {remaining_atoms}"
+        )
+
     for chain in assembly:
         if chain_filter_list:
             if chain.id.upper() not in chain_filter_list:
@@ -803,18 +918,15 @@ def voxelise_assembly(
                         f"file."
                     )
                 continue
-        if not isinstance(chain, ampal.Polypeptide):
-            if verbosity > 0:
-                print(f"{name}:\tIgnoring non-polypeptide chain ({chain.id}).")
-            continue
         if verbosity > 0:
             print(f"{name}:\tProcessing chain {chain.id}...")
         chain_dict[chain.id] = []
-        # Loop through each residue, voxels:
+        # Loop through each residue, voxelis:
         for residue in chain:
             if isinstance(residue, ampal.Residue):
                 # Create voxelised frame:
                 array = create_residue_frame(
+                    atom_filter_fn=atom_filter_fn,
                     residue=residue,
                     frame_edge_length=frame_edge_length,
                     voxels_per_side=voxels_per_side,
@@ -855,6 +967,9 @@ def create_frames_from_structure(
     structure_path: pathlib.Path,
     frame_edge_length: float,
     voxels_per_side: int,
+    keep_side_chain_portion: float,
+    # residues_wo_sidechains: pathlib.Path,
+    cfile: str,
     atom_filter_fn: t.Callable[[ampal.Atom], bool],
     chain_filter_list: t.Optional[t.List[str]],
     is_pdb_gzipped: bool,
@@ -896,6 +1011,8 @@ def create_frames_from_structure(
         Whether to encode voxels as gaussians.
     voxelise_all_states: bool
         Whether to voxelise only the first state of the NMR structure (False) or all of them (True).
+    keep_side_chain_portion: float
+        Determines portion of residues for which the side chain information is kept.
     """
     name = structure_path.name.split(".")[0]
     chain_dict: ChainDict = {}
@@ -919,12 +1036,14 @@ def create_frames_from_structure(
                 chain_dict,
                 frame_edge_length,
                 voxels_per_side,
+                keep_side_chain_portion,
+                # residues_wo_sidechains,
+                cfile,
                 encode_cb,
                 codec,
                 voxels_as_gaussian,
                 tag_rotamers,
             )
-
             result.append(curr_result)
     else:
         if isinstance(assembly, ampal.AmpalContainer):
@@ -933,20 +1052,23 @@ def create_frames_from_structure(
                     f"Selecting the first state from the NMR structure {assembly.id}"
                 )
             assembly = assembly[0]
-        result = voxelise_assembly(
-            assembly,
-            atom_filter_fn,
-            name,
-            chain_filter_list,
-            verbosity,
-            chain_dict,
-            frame_edge_length,
-            voxels_per_side,
-            encode_cb,
-            codec,
-            voxels_as_gaussian,
-            tag_rotamers,
-        )
+    result = voxelise_assembly(
+        assembly,
+        atom_filter_fn,
+        name,
+        chain_filter_list,
+        verbosity,
+        chain_dict,
+        frame_edge_length,
+        voxels_per_side,
+        keep_side_chain_portion,
+        # residues_wo_sidechains,
+        cfile,
+        encode_cb,
+        codec,
+        voxels_as_gaussian,
+        tag_rotamers,
+    )
 
     return result
 
@@ -976,12 +1098,127 @@ def keep_sidechain_cb_atom_filter(atom: ampal.Atom) -> bool:
         return False
 
 
+def organic_cofactors(atom: ampal.Atom, cfile) -> list:
+    atoms_to_keep = ("N", "C", "O", "S")
+    if cfile != "":
+        org_cofactors = []
+        chars = ["[", "]", "'"]
+        for line in open(cfile):
+            row = line.split()
+            row = str(row)
+            for char in chars:
+                row = row.replace(char, "")
+            org_cofactors.append(row)
+        if atom.element == "H":
+            return False
+        elif atom.parent.mol_code in org_cofactors and (
+            atom.res_label.startswith(atoms_to_keep)
+        ):
+            return True
+        else:
+            return False
+    else:
+        pass
+
+
+def keep_sidechains(atom: ampal.Atom) -> bool:
+    """Keeps all the side chain and organic molecule atoms."""
+    atoms_to_keep = ("N", "C", "O", "S")
+    if atom.element == "H":
+        return False
+    elif isinstance(atom.parent, ampal.Residue) and (
+        atom.res_label.startswith(atoms_to_keep)
+    ):
+        return True
+    else:
+        return False
+
+
+def residue_number_indexing(assembly: ampal.Assembly):
+    count = 0
+    residue_number = []
+    ligands = assembly.get_ligands()
+    for chain in assembly:
+        for residue in chain:
+            count += 1
+            residue.id = count
+            residue_number.append(int(residue.id))
+    for ligand in ligands:
+        count += 1
+        ligand.id = count
+        residue_number.append(int(ligand.id))
+    return residue_number
+
+
+def extract_res_ids_and_chains(yaml_file_path):
+    with open(yaml_file_path, "r") as file:
+        data = yaml.safe_load(file)
+
+    # Extract RES_IDs and CHAIN_IDs from the YAML data
+    res_ids = [entry["RES_ID"] for entry in data if "RES_ID" in entry]
+    chain_ids = [entry["CHAIN_ID"] for entry in data if "CHAIN_ID" in entry]
+
+    # Zip RES_IDs and CHAIN_IDs together to create a list of tuples
+    zipped_res_and_chain_ids = list(zip(res_ids, chain_ids))
+
+    return zipped_res_and_chain_ids
+
+
+def call_vd(voidDockDir, voidDockConfig):
+    os.chdir(voidDockDir)
+    with open(voidDockConfig, "r") as file:
+        voidDockConfigData = yaml.safe_load(file)
+
+    pocket_info = voidDockConfigData["pathInfo"]["outDir"]
+
+    pocket_residues_dict = {}
+
+    for root, dirs, files in os.walk(pocket_info):
+        for filename in files:
+            if filename.endswith("_pocket_residues.yaml"):
+                # Construct the full path to the pocket residues file
+                pocket_residues_file = os.path.join(root, filename)
+                # Extract RES_IDs and CHAIN_IDs from the pocket residues file
+                zipped_res_chains = extract_res_ids_and_chains(pocket_residues_file)
+                # Determine the unique chain IDs in the file
+                unique_chain_ids = set(chain for res_id, chain in zipped_res_chains)
+                # Iterate through each unique chain ID
+                for chain_id in unique_chain_ids:
+                    # Construct the key based on the filename and chain ID
+                    key = filename.replace("_pocket_residues.yaml", "") + chain_id
+                    # Filter RES_IDs for the current chain ID
+                    chain_res_ids = [
+                        res_id
+                        for res_id, chain in zipped_res_chains
+                        if chain == chain_id
+                    ]
+                    # Store pocket residues in the dictionary under the determined key
+                    pocket_residues_dict[key] = chain_res_ids
+
+    return pocket_info, pocket_residues_dict
+
+
+def calculate_position_from_pdb(
+    structure: ampal.Assembly, target_chain_id, position_in_chain
+):
+    cumulative_length = 0
+    for chain in structure:
+        if chain.id == target_chain_id:
+            if cumulative_length + position_in_chain <= len(chain):
+                return cumulative_length + position_in_chain
+        cumulative_length += len(chain)
+    return None  # Position not found
+
+
 def process_single_path(
     path_queue: mp.SimpleQueue,
     result_queue: mp.SimpleQueue,
     frame_edge_length: float,
     voxels_per_side: int,
-    atom_filter_fn: t.Callable[[ampal.Atom], bool],
+    keep_side_chain_portion: float,
+    # residues_wo_sidechains: pathlib.Path,
+    cfile: pathlib.Path,
+    atom_filter_fn: t.Callable[[ampal.Atom, str], bool],
     chain_filter_dict: t.Optional[t.Dict[str, t.List[str]]],
     errors: t.Dict[str, str],
     is_pdb_gzipped: bool,
@@ -990,7 +1227,7 @@ def process_single_path(
     codec: object,
     voxels_as_gaussian: bool,
     voxelise_all_states: bool,
-    tag_rotamers: bool,
+    tag_rotamers,
 ):
     """Processes a path and puts the results into a queue."""
     chain_filter_list: t.Optional[t.List[str]]
@@ -1000,6 +1237,7 @@ def process_single_path(
         print(f"Processing `{structure_path}`...")
         try:
             if chain_filter_dict:
+                print("a")
                 chain_filter_list = chain_filter_dict[
                     structure_path.name.split(".")[0].upper().strip("PDB")
                 ]
@@ -1009,6 +1247,9 @@ def process_single_path(
                 structure_path,
                 frame_edge_length,
                 voxels_per_side,
+                keep_side_chain_portion,
+                # residues_wo_sidechains,
+                cfile,
                 atom_filter_fn,
                 chain_filter_list,
                 is_pdb_gzipped,
@@ -1020,6 +1261,7 @@ def process_single_path(
                 tag_rotamers=tag_rotamers,
             )
         except Exception as e:
+            print("err")
             result = str(e)
         if isinstance(result, str):
             errors[str(structure_path)] = result
@@ -1057,6 +1299,7 @@ def save_results(
                 metadata_dict = metadata.__dict__
                 # Loop through metadata dataclass and add it as attribute:
                 for meta, meta_attribute in metadata_dict.items():
+                    print(metadata_dict)
                     hd5.attrs[str(meta)] = meta_attribute
 
                 pdb_group = hd5.create_group(pdb_code)
@@ -1095,9 +1338,9 @@ def save_results(
                         )
                         res_dataset.attrs["label"] = res_result.label
                         res_dataset.attrs["rotamers"] = res_result.rotamers
-                        res_dataset.attrs[
-                            "encoded_residue"
-                        ] = res_result.encoded_residue
+                        res_dataset.attrs["encoded_residue"] = (
+                            res_result.encoded_residue
+                        )
                         frames.value += 1
                 print(f"{pdb_code}: Finished processing.")
             complete.value += 1
@@ -1110,7 +1353,10 @@ def process_paths(
     output_path: pathlib.Path,
     frame_edge_length: float,
     voxels_per_side: int,
-    atom_filter_fn: t.Callable[[ampal.Atom], bool],
+    keep_side_chain_portion: float,
+    # residues_wo_sidechains: pathlib.Path,
+    cfile: pathlib.Path,
+    atom_filter_fn: t.Callable[[ampal.Atom, str], bool],
     chain_filter_dict: t.Optional[t.Dict[str, t.List[str]]],
     processes: int,
     is_pdb_gzipped: bool,
@@ -1156,6 +1402,8 @@ def process_paths(
         Whether to encode voxels as gaussians.
     voxelise_all_states: bool
         Whether to voxelise only the first state of the NMR structure (False) or all of them (True).
+    keep_side_chain_portion: float
+        Determines portion of residues for which the side chain information will be kept.
     """
 
     with mp.Manager() as manager:
@@ -1178,6 +1426,9 @@ def process_paths(
                     result_queue,
                     frame_edge_length,
                     voxels_per_side,
+                    keep_side_chain_portion,
+                    #  residues_wo_sidechains,
+                    cfile,
                     atom_filter_fn,
                     chain_filter_dict,
                     errors,
@@ -1202,10 +1453,13 @@ def process_paths(
             ),
             atom_encoder=list(codec.atomic_labels),
             encode_cb=encode_cb,
+            # residues_wo_sidechains=residues_wo_sidechains,
+            cfile=cfile,
             atom_filter_fn=str(atom_filter_fn),
             residue_encoder=list(standard_amino_acids.values()),
             frame_edge_length=frame_edge_length,
             voxels_as_gaussian=voxels_as_gaussian,
+            keep_side_chain_portion=keep_side_chain_portion,
         )
         storer = mp.Process(
             target=save_results,
@@ -1462,7 +1716,7 @@ def filter_structures_by_blacklist(
     print(
         f"Filtered {old_length - new_length} structures from the original {old_length} structures"
     )
-
+    print()
     return filtered_structure_files
 
 
@@ -1524,8 +1778,11 @@ def make_frame_dataset(
     name: str,
     frame_edge_length: float,
     voxels_per_side: int,
+    keep_side_chain_portion: float,
     codec: object,
-    atom_filter_fn: t.Callable[[ampal.Atom], bool] = default_atom_filter,
+    # residues_wo_sidechains: pathlib.Path,
+    cfile: pathlib.Path,
+    atom_filter_fn: t.Callable[[ampal.Atom, str], bool] = default_atom_filter,
     pieces_filter_file: t.Optional[StrOrPath] = None,
     processes: int = 1,
     is_pdb_gzipped: bool = False,
@@ -1581,6 +1838,8 @@ def make_frame_dataset(
         https://onlinelibrary.wiley.com/action/downloadSupplement?doi=10.1002%2Fprot.25868&file=prot25868-sup-0001-AppendixS1.pdf
     blacklist_csv: StrOrPath
         Path to blacklist csv file.
+    keep_side_chain_portion: float
+        Determines the portion of residues for which the side chain information is kept
 
     Returns
     -------
@@ -1641,7 +1900,7 @@ def make_frame_dataset(
     print(f"Will attempt to process {total_files} structure file/s.")
     print(f"Output file will be written to `{output_file_path.resolve()}`.")
     voxel_edge_length = frame_edge_length / voxels_per_side
-    max_voxel_distance = np.sqrt(voxel_edge_length ** 2 * 3)
+    max_voxel_distance = np.sqrt(voxel_edge_length**2 * 3)
     print(f"Frame edge length = {frame_edge_length:.2f} A")
     print(f"Voxels per side = {voxels_per_side}")
     print(f"Voxels will have an edge length of {voxel_edge_length:.2f} A.")
@@ -1657,6 +1916,9 @@ def make_frame_dataset(
         output_path=output_file_path,
         frame_edge_length=frame_edge_length,
         voxels_per_side=voxels_per_side,
+        keep_side_chain_portion=keep_side_chain_portion,
+        # residues_wo_sidechains=residues_wo_sidechains,
+        cfile=cfile,
         processes=processes,
         atom_filter_fn=atom_filter_fn,
         chain_filter_dict=chain_filter_dict,
@@ -1667,7 +1929,6 @@ def make_frame_dataset(
         voxels_as_gaussian=voxels_as_gaussian,
         gzip_compression=gzip_compression,
         voxelise_all_states=voxelise_all_states,
-        tag_rotamers=tag_rotamers,
     )
     return output_file_path
 
