@@ -4,7 +4,8 @@ In this type of dataset, all individual entries are stored separately in a flat
 structure.
 """
 import csv
-import glob
+import numba
+import math
 import gzip
 import multiprocessing as mp
 import pathlib
@@ -421,16 +422,11 @@ def convert_atom_to_gaussian_density(
             np.exp(-1 * ((y_range - y) / wanderwaal_radius) ** 2, dtype=np.float16),
             np.exp(-1 * ((z_range - z) / wanderwaal_radius) ** 2, dtype=np.float16),
         )
-
-        x_densities = []
-        y_densities = []
-        z_densities = []
-        r = resolution // 3
         # Integrate to get area under the gaussian curve:
-        for i in range(0, resolution, r):
-            x_densities.append(np.trapz(x_vals[i : i + r], x_range[i : i + r]))
-            y_densities.append(np.trapz(y_vals[i : i + r], y_range[i : i + r]))
-            z_densities.append(np.trapz(z_vals[i : i + r], z_range[i : i + r]))
+        r = resolution // 3
+        x_densities = np.trapz(x_vals.reshape(3, r), x_range.reshape(3, r), axis=1)
+        y_densities = np.trapz(y_vals.reshape(3, r), y_range.reshape(3, r), axis=1)
+        z_densities = np.trapz(z_vals.reshape(3, r), z_range.reshape(3, r), axis=1)
         # # Create grids for x, y and z :
         xyz_grids = np.meshgrid(x_densities, y_densities, z_densities)
         # The multiplication here is necessary so that e**x * e**y * e**z are equivalent to
@@ -653,7 +649,7 @@ def create_residue_frame(
         (voxels_per_side, voxels_per_side, voxels_per_side, codec.encoder_length),
     )
     # Change frame type to float if gaussian else use bool:
-    frame = frame.astype(np.float16) if voxels_as_gaussian else frame.astype(np.bool)
+    frame = frame.astype(np.float16) if voxels_as_gaussian else frame.astype(np.bool_)
     # iterate through all atoms within the frame
     for atom in (
         a
@@ -1524,7 +1520,7 @@ def make_frame_dataset(
     name: str,
     frame_edge_length: float,
     voxels_per_side: int,
-    codec: object,
+    codec: Codec,
     atom_filter_fn: t.Callable[[ampal.Atom], bool] = default_atom_filter,
     pieces_filter_file: t.Optional[StrOrPath] = None,
     processes: int = 1,
