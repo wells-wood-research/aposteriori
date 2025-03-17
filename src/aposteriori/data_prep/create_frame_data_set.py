@@ -28,7 +28,9 @@ from aposteriori.config import (
     ATOM_VANDERWAAL_RADII,
     MAKE_FRAME_DATASET_VER,
     PDB_REQUEST_URL,
+    STD_RESIDUES_1,
     UNCOMMON_RESIDUE_DICT,
+    STD_RESIDUES_3,
 )
 
 
@@ -312,21 +314,35 @@ def encode_cb_prevox(residue: ampal.Residue):
     return
 
 
-def within_frame(frame_edge_length: float, atom: ampal.Atom) -> bool:
-    """Tests if an atom is within the `frame_edge_length` of the origin."""
-    half_frame_edge_length = frame_edge_length / 2
-    return all([0 <= abs(v) <= half_frame_edge_length for v in atom.array])
+def within_frame(atoms: np.ndarray, frame_edge_length: float) -> np.ndarray:
+    """
+    Vectorized version of within_frame to determine if atoms are inside the frame.
+
+    Parameters
+    ----------
+    atoms: np.ndarray
+        Numpy array of atom positions (N,3).
+    frame_edge_length: float
+        Edge length of the frame.
+
+    Returns
+    -------
+    mask: np.ndarray
+        Boolean mask indicating whether each atom is inside the frame.
+    """
+    half_frame_edge = frame_edge_length / 2
+    return np.all(np.abs(atoms) <= half_frame_edge, axis=1)
 
 
 def discretize(
-    atom: ampal.Atom, voxel_edge_length: float, adjust_by: int = 0
+    atoms: np.ndarray, voxel_edge_length: float, adjust_by: int = 0
 ) -> t.Tuple[int, int, int]:
     """Rounds and then converts to an integer.
 
     Parameters
     ----------
-    atom: ampal.Atom
-        Atom x, y, z coordinates will be discretized based on `voxel_edge_length`.
+    atoms: np.ndarray[ampal.Atom]
+        Numpy array of atom x, y, z coordinates will be discretized based on `voxel_edge_length`.
     voxel_edge_length: float
         Edge length of the voxels that are mapped onto cartesian space.
     adjust_by: int
@@ -334,11 +350,7 @@ def discretize(
 
     # I'm explicitly repeating this operation to make it explicit to the type checker
     # that a triple is returned.
-    return (
-        int(np.round(atom.x / voxel_edge_length)) + adjust_by,
-        int(np.round(atom.y / voxel_edge_length)) + adjust_by,
-        int(np.round(atom.z / voxel_edge_length)) + adjust_by,
-    )
+    return np.round(atoms / voxel_edge_length).astype(np.int32) + adjust_by
 
 
 def encode_residue(residue: str) -> np.ndarray:
@@ -356,25 +368,22 @@ def encode_residue(residue: str) -> np.ndarray:
     residue_encoding: np.ndarray
         One-Hot encoding of the residue with shape (20,)
     """
-    std_residues = list(standard_amino_acids.values())
-    residue_encoding = np.zeros(len(std_residues), dtype=bool)
+    residue_encoding = np.zeros(20, dtype=np.uint8)
 
-    # Deal with non-standard residues:
-    if residue not in std_residues:
-        if residue in UNCOMMON_RESIDUE_DICT.keys():
-            warnings.warn(f"{residue} is not a standard residue.")
-            residue_label = UNCOMMON_RESIDUE_DICT[residue]
-            warnings.warn(f"Residue converted to {residue_label}.")
-        else:
-            assert (
-                residue in UNCOMMON_RESIDUE_DICT.keys()
-            ), f"Expected natural amino acid, attempted conversion from uncommon residues, but got {residue}."
+    # Handle uncommon residues
+    if residue in UNCOMMON_RESIDUE_DICT:
+        warnings.warn(f"{residue} is not a standard residue.")
+        residue_label = UNCOMMON_RESIDUE_DICT[residue]
+        warnings.warn(f"Residue converted to {residue_label}.")
     else:
-        residue_label = residue
+        assert (
+            residue in STD_RESIDUES_3
+        ), f"Expected natural amino acid, attempted conversion from uncommon residues, but got {residue}."
+        residue_label = residue  # Keep as is if it's standard
 
-    # Add True at the correct residue index:
-    res_idx = std_residues.index(residue_label)
-    residue_encoding[res_idx] = 1
+    # NumPy vectorized lookup
+    mask = STD_RESIDUES_3 == residue_label
+    residue_encoding[np.argmax(mask)] = 1
 
     return residue_encoding
 
@@ -451,10 +460,7 @@ def convert_atom_to_gaussian_density(
             # Add density to frame:
             gaussian_frame[vy, vx, vz] = voxel_density
 
-    # Normalize so that values add up to 1:
-    norm_gaussian_frame = gaussian_frame / np.sum(gaussian_frame)
-
-    return norm_gaussian_frame
+    return gaussian_frame / gaussian_frame.sum()
 
 
 def calculate_atom_coord_modifier_within_voxel(
@@ -581,7 +587,7 @@ def add_gaussian_at_position(
 
 def charge_polar_property(res: ampal.Residue, codec: Codec):
     if "P" in codec.atomic_labels:
-        if res.mol_letter in standard_amino_acids.keys():
+        if res.mol_letter in STD_RESIDUES_1:
             res_property = -1 if polarity_Zimmerman[res.mol_letter] < 20 else 1
         else:
             res_property = 0
@@ -639,58 +645,75 @@ def create_residue_frame(
         * If any voxel is already occupied
         * If the central voxel in the frame is not carbon as it should the the CA atom
     """
-    assert voxels_per_side % 2, "The number of voxels per side should be odd."
+    # Must be odd so that CA is centered.
+    assert voxels_per_side % 2 == 1, "The number of voxels per side should be odd."
     voxel_edge_length = frame_edge_length / voxels_per_side
     assembly = residue.parent.parent
     chain = residue.parent
+
+    # Reorient the assembly so that the residue's peptide plane is aligned.
     align_to_residue_plane(residue)
 
+    # Initialize frame – use float16 if using Gaussian, else boolean.
+    frame_dtype = np.float16 if voxels_as_gaussian else np.bool_
     frame = np.zeros(
         (voxels_per_side, voxels_per_side, voxels_per_side, codec.encoder_length),
+        dtype=frame_dtype,
     )
-    # Change frame type to float if gaussian else use bool:
-    frame = frame.astype(np.float16) if voxels_as_gaussian else frame.astype(np.bool_)
-    # iterate through all atoms within the frame
-    for atom in (
-        a
-        for a in assembly.get_atoms(ligands=False)
-        if within_frame(frame_edge_length, a)
-    ):
-        # 3d coordinates are converted to relative indices in frame array
-        indices = discretize(atom, voxel_edge_length, adjust_by=voxels_per_side // 2)
-        ass = atom.parent.parent.parent
-        cha = atom.parent.parent
-        res = atom.parent
-        assert (atom.element != "") or (atom.element != " "), (
-            f"Atom element should not be blank:\n"
-            f"{atom.chain}:{atom.res_num}:{atom.res_label}"
-        )
-        assert (res.mol_code != "") or (res.mol_code != " "), (
-            f"Residue mol_code should not be blank:\n"
-            f"{cha.id}:{res.id}:{atom.res_label}"
-        )
+
+    # Get all atoms (excluding ligands) as a list.
+    all_atoms = list(assembly.get_atoms(ligands=False))
+    # Create a (N,3) array of their coordinates.
+    all_coords = np.array([atom.array for atom in all_atoms])
+    # Use the vectorized within_frame to get a boolean mask.
+    mask = within_frame(all_coords, frame_edge_length)
+
+    # Filter atoms and coordinates
+    filtered_atoms = [atom for atom, m in zip(all_atoms, mask) if m]
+    filtered_coords = np.array([atom.array for atom in filtered_atoms])
+
+    # Vectorized discretization of filtered coordinates.
+    indices_arr = discretize(
+        filtered_coords, voxel_edge_length, adjust_by=voxels_per_side // 2
+    )
+    # indices_arr is an (N,3) array.
+
+    # Loop over filtered atoms using the precomputed indices.
+    for i, atom in enumerate(filtered_atoms):
+        indices = tuple(indices_arr[i])  # Convert numpy array to tuple for indexing.
+
+        # Basic assertions on atom element and residue mol_code.
+        assert (
+            atom.element.strip() != ""
+        ), f"Atom element should not be blank: {atom.chain}:{atom.res_num}:{atom.res_label}"
+        res_obj = atom.parent
+        cha_obj = atom.parent.parent
+        assert (
+            res_obj.mol_code.strip() != ""
+        ), f"Residue mol_code should not be blank: {cha_obj.id}:{res_obj.id}:{atom.res_label}"
+
         if not voxels_as_gaussian:
-            assert frame[indices][0] == False, (
-                f"Voxel should not be occupied: Currently "
-                f"{frame[indices]}, "
-                f"{ass.id}:{cha.id}:{res.id}:{atom.res_label}"
-            )
-            # If the voxel is a gaussian, there may be remnants of a nearby atom
-            # hence this test would fail
-        if not voxels_as_gaussian:
-            if not atom.res_label == "CB":
-                np.testing.assert_array_equal(
-                    frame[indices], np.array([False] * len(frame[indices]), dtype=bool)
+            # For voxel encoding, the voxel should not already be occupied.
+            if frame[indices][0]:
+                raise AssertionError(
+                    f"Voxel should not be occupied: Currently {frame[indices]}, {cha_obj.id}:{res_obj.id}:{atom.res_label}"
                 )
-        res_property = charge_polar_property(res, codec)
-        # Encode atoms:
+            # Extra check for non-CB atoms.
+            if atom.res_label != "CB":
+                expected = np.array([False] * codec.encoder_length, dtype=np.bool_)
+                np.testing.assert_array_equal(frame[indices], expected)
+
+        # Get the residue property (e.g., charge/polarity)
+        res_property = charge_polar_property(res_obj, codec)
+
         if voxels_as_gaussian:
+            # Calculate modifiers for Gaussian density.
             modifiers_triple = calculate_atom_coord_modifier_within_voxel(
-                atom, voxel_edge_length, indices, adjust_by=voxels_per_side // 2
+                atom, voxel_edge_length, indices_arr[i], adjust_by=voxels_per_side // 2
             )
-            # Get Gaussian encoding
-            gaussian_matrix, atom_idx = Codec.encode_gaussian_atom(
-                codec, atom.res_label, modifiers_triple
+            # Get Gaussian encoding and channel index.
+            gaussian_matrix, atom_idx = codec.encode_gaussian_atom(
+                atom.res_label, modifiers_triple
             )
             gaussian_atom = gaussian_matrix[:, :, :, atom_idx]
             # Add at position:
@@ -719,6 +742,7 @@ def create_residue_frame(
                 and res_property != 0
             ):
                 frame[indices] = res_property
+    # Check that the central voxel is as expected.
     centre = voxels_per_side // 2
     # Check whether central atom is C:
     if "CA" in codec.atomic_labels:
@@ -726,7 +750,7 @@ def create_residue_frame(
             np.testing.assert_array_less(frame[centre, centre, centre][3], 1)
             assert (
                 0 < frame[centre, centre, centre][3] <= 1
-            ), f"The central atom value should be between 0 and 1 but was {frame[centre, centre, centre][4]}"
+            ), f"The central atom value should be between 0 and 1 but was {frame[centre, centre, centre][3]}"
         else:
             assert (
                 frame[centre, centre, centre][3] == 1
@@ -737,7 +761,6 @@ def create_residue_frame(
             assert (
                 0 < frame[centre, centre, centre][0] <= 1
             ), f"The central atom value should be between 0 and 1 but was {frame[centre, centre, centre][0]}"
-
         else:
             assert (
                 frame[centre, centre, centre][0] == 1
@@ -1112,7 +1135,7 @@ def process_paths(
     is_pdb_gzipped: bool,
     verbosity: int,
     encode_cb: bool,
-    codec: object,
+    codec: Codec,
     voxels_as_gaussian: bool,
     gzip_compression: bool = True,
     voxelise_all_states: bool = True,

@@ -1,32 +1,18 @@
-import pathlib
+import numpy as np
 
-from ampal.data import ELEMENT_DATA
+from ampal.amino_acids import standard_amino_acids
 
 # Config paths
 MAKE_FRAME_DATASET_VER = "2.4.0"
-PROJECT_ROOT_DIR = pathlib.Path(__file__).parent
-DATA_FOLDER = PROJECT_ROOT_DIR / "data"
-DATA_FOLDER.mkdir(parents=True, exist_ok=True)
-ATOM_COLORS = {
-    # Atomic number : Color
-    0: ELEMENT_DATA["C"]["CPK"],  # Carbon
-    1: ELEMENT_DATA["N"]["CPK"],  # Nitrogen
-    2: ELEMENT_DATA["O"]["CPK"],  # Oxygen
-    3: "orange",  # +1
-    4: "green",  # +2
-}
 ATOM_VANDERWAAL_RADII = {
     # Atomic number : Radius
     0: 0.7,  # Carbon
     1: 0.65,  # Nitrogen
     2: 0.6,  # Oxygen
 }
-PDB_PATH = DATA_FOLDER / "pdb"
-PDB_PATH.mkdir(parents=True, exist_ok=True)
 PDB_REQUEST_URL = "https://files.rcsb.org/download/"
-PDB_CODES = ["1qys", "6ct4"]
-HDF5_STRUCTURES_PATH = DATA_FOLDER / "frame_dataset.hdf5"
-FETCH_PDB = True
+STD_RESIDUES_3 = np.array(list(standard_amino_acids.values()))
+STD_RESIDUES_1 = np.array(list(standard_amino_acids.keys()))
 UNCOMMON_RESIDUE_DICT = {
     "DLY": "LYS",
     "OTH": "THR",
@@ -653,4 +639,3 @@ UNCOMMON_RESIDUE_DICT = {
     "ALO": "THR",
     "BTK": "LYS",
 }
-UNCOMMON_RES_CONVERSION = True
