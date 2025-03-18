@@ -191,7 +191,6 @@ def test_create_residue_frame_backbone_only(residue_number):
         single_res_assembly[0][0],
         frame_edge_length,
         voxels_per_side,
-        encode_cb=False,
         codec=codec,
     )
     np.testing.assert_array_equal(
@@ -224,7 +223,6 @@ def test_even_voxels_per_side(voxels_per_side):
             frame_edge_length=frame_edge_length,
             voxels_per_side=voxels_per_side,
             require_confirmation=False,
-            encode_cb=True,
             codec=codec,
         )
 
@@ -278,7 +276,6 @@ def test_make_frame_dataset():
                     residue=ampal_1ubq["A"][residue_number],
                     frame_edge_length=frame_edge_length,
                     voxels_per_side=voxels_per_side,
-                    encode_cb=False,
                     codec=codec,
                 )
                 rota = ""
@@ -348,7 +345,6 @@ def test_make_frame_dataset_as_gaussian():
                     residue=ampal_1ubq["A"][residue_number],
                     frame_edge_length=frame_edge_length,
                     voxels_per_side=voxels_per_side,
-                    encode_cb=False,
                     codec=codec,
                     voxels_as_gaussian=True,
                 )
@@ -378,7 +374,6 @@ def test_make_frame_dataset_as_gaussian_cnocacbq():
         atom_filter_fn=default_atom_filter,
         frame_edge_length=frame_edge_length,
         voxels_per_side=voxels_per_side,
-        encode_cb=True,
         codec=codec,
         tag_rotamers=False,
         chain_dict={},
@@ -451,7 +446,6 @@ def test_make_frame_dataset_as_gaussian_cnocacbp():
         atom_filter_fn=default_atom_filter,
         frame_edge_length=frame_edge_length,
         voxels_per_side=voxels_per_side,
-        encode_cb=True,
         codec=codec,
         tag_rotamers=False,
         chain_dict={},
@@ -549,7 +543,7 @@ def test_cb_atom_filter(residue_number: int):
 
 
 def test_add_gaussian_at_position():
-    main_matrix = np.zeros((5, 5, 5, 5), dtype=np.float)
+    main_matrix = np.zeros((5, 5, 5, 5), dtype=np.float16)
     modifiers_triple = (0, 0, 0)
     codec = cfds.Codec.CNOCACB()
 
@@ -840,7 +834,7 @@ def test_filter_structures_by_blacklist():
     for pdb in ["1qys.pdb1", "3qy1A.pdb1", "6ct4.pdb1"]:
         structure_files.append(Path(pdb))
     filtered_structures = cfds.filter_structures_by_blacklist(
-        structure_files, blacklist_file
+        structure_files, blacklist_file, verbosity=0
     )
     assert len(structure_files) == 3, f"Expected 3 structures to be in the list"
     assert (
