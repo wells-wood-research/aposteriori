@@ -98,7 +98,7 @@ def test_create_residue_frame_cnocb_encoding(residue_number):
     for atom in (
         a
         for a in assembly.get_atoms(ligands=False)
-        if cfds.within_frame(frame_edge_length, a)
+        if cfds.within_frame(a, frame_edge_length)
     ):
         assert g.distance(atom, (0, 0, 0)) <= max_dist, (
             "All atoms filtered by `within_frame` should be within "
@@ -171,7 +171,7 @@ def test_create_residue_frame_backbone_only(residue_number):
     for atom in (
         a
         for a in assembly.get_atoms(ligands=False)
-        if cfds.within_frame(frame_edge_length, a)
+        if cfds.within_frame(a, frame_edge_length)
     ):
         assert g.distance(atom, (0, 0, 0)) <= max_dist, (
             "All atoms filtered by `within_frame` should be within "
