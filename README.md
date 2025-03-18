@@ -21,25 +21,23 @@ pip install aposteriori
 
 ### Manual Install
 
-Change directory to the aposteriori folder if you have not done so already:
+Clone the repository and install manually:
 
 ```sh
-git clone https://github.com/wells-wood-research/aposteriori/tree/master
+git clone https://github.com/wells-wood-research/aposteriori.git
 cd aposteriori/
-```
-Install aposteriori
-
-```sh
 pip install .
 ```
+
 ## Creating a Dataset
 
-There are two ways to create a dataset using `aposteriori`: through the Python API in
-`aposteriori.make_frame_dataset` or using the command line tool `make-frame-dataset` that
-installs along side the module:
+
+You can create a dataset using `aposteriori` in two ways:
+- **Python API**: `aposteriori.make_frame_dataset`
+- **Command-Line Interface (CLI)**: `make-frame-dataset`
 
 ```sh
-make-frame-dataset /path/to/folder
+make-frame-dataset /path/to/pdb_folder
 ```
 
 If you want to try out an example, run: 
@@ -47,245 +45,142 @@ If you want to try out an example, run:
 make-frame-dataset tests/testing_files/pdb_files/
 ```
 
-Check the `make-frame-dataset` help page for more details on its usage:
-
+To view all options:
 ```sh
-Usage: make-frame-dataset [OPTIONS] STRUCTURE_FILE_FOLDER
-
-  Creates a dataset of voxelized amino acid frames.
-
-  A frame refers to a region of space around an amino acid. For every
-  residue in the input structure(s), a cube of space around the region (with
-  an edge length equal to `--frame_edge_length`, default 12 Å), will be
-  mapped to discrete space, with a defined number of voxels per edge (equal
-  to `--voxels-per-side`, default = 21).
-
-  Basic Usage:
-
-  `make-frame-dataset $path_to_folder_with_pdb/`
-
-  eg. `make-frame-dataset tests/testing_files/pdb_files/`
-
-  This command will make a tiny dataset in the current directory
-  `test_dataset.hdf5`, containing all residues of the structures in the
-  folder.
-
-  Globs can be used to define the structure files to be processed. `make-
-  frame-dataset pdb_files/**/*.pdb` would include all `.pdb` files in all
-  subdirectories of the `pdb_files` directory.
-
-  You can process gzipped pdb files, but the program assumes that the format
-  of the file name is similar to `1mkk.pdb.gz`. If you have more complex
-  requirements than this, we recommend using this library directly from
-  Python rather than through this CLI.
-
-  The hdf5 object itself is like a Python dict. The structure is simple:
-  
-    └─[pdb_code] Contains a number of subgroups, one for each chain.
-      └─[chain_id] Contains a number of subgroups, one for each residue.
-        └─[residue_id] voxels_per_side^3 array of ints, representing element number.
-          └─.attrs['label'] Three-letter code for the residue.
-          └─.attrs['encoded_residue'] One-hot encoding of the residue.
-    └─.attrs['make_frame_dataset_ver']: str - Version used to produce the dataset.
-    └─.attrs['frame_dims']: t.Tuple[int, int, int, int] - Dimentsions of the frame.
-    └─.attrs['atom_encoder']: t.List[str] - Lables used for the encoding (eg, ["C", "N", "O"]).
-    └─.attrs['encode_cb']: bool - Whether a Cb atom was added at the avg position of (-0.741287356, -0.53937931, -1.224287356).
-    └─.attrs['atom_filter_fn']: str - Function used to filter the atoms in the frame.
-    └─.attrs['residue_encoder']: t.List[str] - Ordered list of residues corresponding to the encoding used.
-    └─.attrs['frame_edge_length']: float - Length of the frame in Angstroms (A)
-    └─.attrs['voxels_as_gaussian']: bool - Whether the voxels are encoded as a floating point of a gaussian (True) or boolean (False)
-
-  So hdf5['1ctf']['A']['58'] would be an array for the voxelized.
-
-Options:
-Options:
-  -o, --output-folder PATH        Path to folder where output will be written.
-                                  Default = `.`
-
-  -n, --name TEXT                 Name used for the dataset file, the `.hdf5`
-                                  extension does not need to be included as it
-                                  will be appended. Default = `frame_dataset`
-
-  -e, --extension TEXT            Extension of structure files to be included.
-                                  Default = `.pdb`.
-
-  --pieces-filter-file PATH       Path to a Pieces format file used to filter
-                                  the dataset to specific chains inspecific
-                                  files. All other PDB files included in the
-                                  input will be ignored.
-
-  --frame-edge-length FLOAT       Edge length of the cube of space around each
-                                  residue that will be voxelized. Default =
-                                  12.0 Angstroms.
-
-  --voxels-per-side INTEGER       The number of voxels per side of the frame.
-                                  This will give a final cube of `voxels-per-
-                                  side`^3. Default = 21.
-
-  -p, --processes INTEGER         Number of processes to be used to create the
-                                  dataset. Default = 1.
-
-  -z, --is_pdb_gzipped            If True, this flag indicates that the
-                                  structure files are gzipped. Default =
-                                  False.
-
-  -r, --recursive                 If True, all files in all subfolders will be
-                                  processed.
-
-  -v, --verbose                   Sets the verbosity of the output, use `-v`
-                                  for low level output or `-vv` for even more
-                                  information.
-
-  -cb, --encode_cb BOOLEAN        Encode the Cb at an average position
-                                  (-0.741287356, -0.53937931, -1.224287356) in
-                                  the aligned frame, even for Glycine
-                                  residues. Default = True
-
-  -ae, --atom_encoder [CNO|CNOCB|CNOCBCA]
-                                  Encodes atoms in different channels,
-                                  depending on atom types. Default is CNO,
-                                  other options are ´CNOCB´ and `CNOCBCA` to
-                                  encode the Cb or Cb and Ca in different
-                                  channels respectively.  [required]
-
-  -d, --download_file PATH        Path to csv file with PDB codes to be
-                                  voxelised. The biological assembly will be
-                                  used for download. PDB codes will be
-                                  downloaded the /pdb/ folder.
-
-  -g, --voxels_as_gaussian BOOLEAN
-                                  Boolean - whether to encode voxels as
-                                  gaussians (True) or voxels (False). The
-                                  gaussian representation uses the
-                                  wanderwaal's radius of each atom using the
-                                  formula e^(-x^2) where x is Vx - x)^2 + (Vy
-                                  - y)^2) + (Vz - z)^2)/ r^2 and  (Vx, Vy, Vz)
-                                  is the position of the voxel in space. (x,
-                                  y, z) is the position of the atom in space,
-                                  r is the Van der Waal’s radius of the atom.
-                                  They are then normalized to add up to 1.
-
-  -b, --blacklist_csv PATH        Path to csv file with structures to be
-                                  removed.
-
-  -comp, --compression_gzip BOOLEAN
-                                  Whether to comrpess the dataset with gzip
-                                  compression.
-
-  -vas, --voxelise_all_states BOOLEAN
-                                  Whether to voxelise only the first state of
-                                  the NMR structure (False) or all of them
-                                  (True).
-
-  -rot, --tag_rotamers BOOLEAN    Whether to tag rotamer information to the
-                                  frame (True) or not (False).
-
-  --help                          Show this message and exit.
-
+make-frame-dataset --help
 ```
 
-### Example 1: Create a Dataset Using Biological Units of Proteins
+To predict the identity of a frame, you can use several models from [TIMED-Design](https://raw.githubusercontent.com/wells-wood-research/timed-design).
 
-Ideally, if you are trying to solve the Inverse Protein Folding Problem
-, you should use Biological Units as they are the minimal functional part of
- a protein. This prevents having solvent-exposed hydrophobic residues as
-  training data. 
-  
-Download the dataset: 
-- ftp://ftp.ebi.ac.uk/pub/databases/pdb/data/biounit/PDB (European Server)
-Alternative servers are available here (https://www.wwpdb.org/ftp/pdb-ftp-sites)
 
-To read more about biological units: https://pdbj.org/help/about-aubu and 
-https://pdb101.rcsb.org/learn/guide-to-understanding-pdb-data/biological-assemblies
+## Understanding the Dataset Format
 
-Once the dataset is downloaded, you will have a directory with sub-directory
- containig the gzipped PDB structures (ie. your Protein Data Bank Files). 
- 
-To voxelize the structures into frames, run:
+The resulting dataset is stored in an HDF5 file and follows this structure:
+
+```
+└── [PDB Code]  # Each protein structure
+    └── [Chain ID]  # Each chain in the structure
+        └── [Residue ID]  # Each residue as a voxelized 3D frame
+            ├── Voxel Data (NxNxNxC array)
+            ├── .attrs['label']  # Residue three-letter code
+            ├── .attrs['encoded_residue']  # One-hot encoded residue identity
+└── .attrs['make_frame_dataset_ver']  # Version info
+└── .attrs['frame_dims']  # Voxel grid dimensions
+└── .attrs['atom_encoder']  # Atom encoding scheme
+└── .attrs['frame_edge_length']  # Frame size in Å
+└── .attrs['voxels_as_gaussian']  # Whether voxels store Gaussian density maps
+```
+
+```python
+import h5py
+with h5py.File("frame_dataset.hdf5", "r") as dataset:
+    frame = dataset["1CTF"]["A"]["58"][:]  # Get voxelized frame
+```
+
+## Command-Line Options
+
+```shell
+make-frame-dataset [OPTIONS] STRUCTURE_FILE_FOLDER
+```
+
+### Key Options
+| Option | Description |
+|--------|-------------|
+| `-o, --output-folder PATH` | Output directory (default: current) |
+| `-n, --name TEXT` | Dataset name (default: `frame_dataset.hdf5`) |
+| `-e, --extension TEXT` | File extension to process (default: `.pdb`) |
+| `--frame-edge-length FLOAT` | Frame size in Å (default: `12.0`) |
+| `--voxels-per-side INTEGER` | Voxel grid size (default: `21`) |
+| `-p, --processes INTEGER` | Number of parallel processes (default: `1`) |
+| `-g, --voxels_as_gaussian BOOLEAN` | Store as Gaussian densities instead of binary (default: `False`) |
+| `-b, --blacklist_csv PATH` | Exclude structures in a CSV file |
+| `-d, --download_file PATH` | Download PDB structures from a CSV list |
+| `-r, --recursive` | Include subdirectories |
+
+
+## Examples
+
+### Example 1: Create a Dataset Using a Folder of PDBs
 
 ```sh
-make-frame-dataset /path/to/biounits/  -e .pdb1.gz 
+make-frame-dataset tests/testing_files/pdb_files/
 ```
-  
-If everything went well, you should be seeing the number of structures that
- will be voxelised and a list of default parameters, to which you will press "y
- " to proceed. 
- 
 
-### Example 2: Create a Dataset Using Biological Units of Proteins and PISCES
+### Example 2: Create a Dataset Using Biological Units of Proteins
 
-PISCES (Protein Sequence Culling Server) is a curated subset of protein
- structures. Each file contains a list of structures with parameters such as
-  resolution, percentage identity and R-Values. 
+Biological Units are functionally relevant protein structures that avoid artifacts like solvent-exposed hydrophobic residues.
+
+```sh
+make-frame-dataset /path/to/biounits/ -r 
+```
+
+In this case the recursive flag `-r` tells aposteriori to look in subfolders. 
+
+Download the datasets from: 
+- [European Bioinformatics Institute](ftp://ftp.ebi.ac.uk/pub/databases/pdb/data/biounit/PDB)
+- [Alternative Sources](https://www.wwpdb.org/ftp/pdb-ftp-sites)
+
+
+For more details, see:
+- [Understanding Biological Units](https://pdb101.rcsb.org/learn/guide-to-understanding-pdb-data/biological-assemblies)
+
+
+### Example 3: Create a Dataset Using Biological Units of Proteins and PISCES
+
+[PISCES](http://dunbrack.fccc.edu/pisces/) provides curated protein subsets based on resolution, identity, and quality.
   
-Aposteriori supports filtering with a PISCES file as such:
+To voxelize structures from a PISCES file:
  
 ```sh
-make-frame-dataset /path/to/biounits/  -e .pdb1.gz --pieces-filter-file
- path/to/pisces/cullpdb_pc90_res1.6_R0.25_d190114_chains8082
+make-frame-dataset /path/to/biounits/ --pieces-filter-file path/to/pisces/cullpdb_pc90_res1.6_R0.25_d190114_chains8082
 ```
-  
-If everything went well, you should be seeing the number of structures that
- will be voxelised and a list of default parameters, to which you will press "y
- " to proceed. 
 
 ## Development
 
 The easiest way to install a development version of `aposteriori` is using Conda:
 
-
-### Conda
-
-Create the environment:
+Create and activate a development environment:
 
 ```shell
 conda create -n aposteriori python=3.8
+conda activate aposteriori
 ```
 
-Activate it and clone the repository:
-
+Clone and install dependencies:
 ```shell
-conda activate aposteriori
 git clone https://github.com/wells-wood-research/aposteriori.git
 cd aposteriori/
-```
-
-Install dependencies:
-
-```sh
 pip install -r dev-requirements.txt
-```
-
-Install aposteriori:
-
-```shell
 pip install .
 ```
-Check that aposteriori works
 
-```sh
- make-frame-dataset --help
+Run tests:
 ```
-
-Make sure you test your install:
-
-```sh
 pytest tests/
 ```
 
+### Checking CLI Installation
+...
+make-frame-dataset --help
+...
 
-### Pip (only)
+---
 
-Alternatively you can install the repository with pip:
+## Citing Aposteriori
+If you use `aposteriori` in your research, please cite it appropriately.
 
-```shell
-git clone https://github.com/wells-wood-research/aposteriori.git
-cd aposteriori/
-pip install -r dev-requirements.txt
 ```
-
-Install aposteriori:
-
-```shell
-pip install .
+@article{timed,
+    author = {Castorina, Leonardo V and Ünal, Suleyman Mert and Subr, Kartic and Wood, Christopher W},
+    title = "{TIMED-Design: Flexible and Accessible Protein Sequence Design with Convolutional Neural Networks}",
+    journal = {Protein Engineering, Design and Selection},
+    pages = {gzae002},
+    year = {2024},
+    month = {01},
+    abstract = "{Sequence design is a crucial step in the process of designing or engineering proteins. Traditionally, physics-based methods have been used to solve for optimal sequences, with the main disadvantages being that they are computationally intensive for the end user. Deep learning based methods offer an attractive alternative, outperforming physics-based methods at a significantly lower computational cost.In this paper, we explore the application of Convolutional Neural Networks (CNNs) for sequence design. We describe the development and benchmarking of a range of networks, as well as reimplementations of previously described CNNs. We demonstrate the flexibility of representing proteins in a three-dimensional voxel grid by encoding additional design constraints into the input data. Finally, we describe TIMED-Design, a web application and command line tool for exploring and applying the models described in this paper.The User Interface (UI) will be available at the URL: https://pragmaticproteindesign.bio.ed.ac.uk/timed. The source code for TIMED-Design is available at https://github.com/wells-wood-research/timed-design.chris.wood@ed.ac.ukSupplementary data are available at Journal Name online.}",
+    issn = {1741-0126},
+    doi = {10.1093/protein/gzae002},
+    url = {https://doi.org/10.1093/protein/gzae002},
+    eprint = {https://academic.oup.com/peds/advance-article-pdf/doi/10.1093/protein/gzae002/56453873/gzae002.pdf},
+}
 ```
