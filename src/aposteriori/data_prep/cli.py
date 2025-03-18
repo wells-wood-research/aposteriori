@@ -1,10 +1,11 @@
-import pathlib
+from pathlib import Path
 import sys
 import typing as t
 import warnings
 
 import click
 
+from aposteriori.config import VALID_EXT
 from aposteriori.data_prep.create_frame_data_set import (
     Codec,
     StrOrPath,
@@ -16,17 +17,8 @@ from aposteriori.data_prep.create_frame_data_set import (
 
 # {{{ CLI
 @click.command()
-@click.argument(
-    "structure_file_folder",
-    type=str,
-)
-@click.option(
-    "-o",
-    "--output-folder",
-    type=click.Path(),
-    default=".",
-    help=("Path to folder where output will be written. Default = `.`"),
-)
+@click.argument("structure_file_folder", type=click.Path(exists=True, file_okay=False))
+@click.option("-o", "--output-folder", type=click.Path(), default=".", help="Output directory. Default: `.`")
 @click.option(
     "-n",
     "--name",
@@ -38,27 +30,12 @@ from aposteriori.data_prep.create_frame_data_set import (
     ),
 )
 @click.option(
-    "-e",
-    "--extension",
-    type=str,
-    default=".pdb",
-    help=("Extension of structure files to be included. Default = `.pdb`."),
-)
-@click.option(
-    "--pieces-filter-file",
-    type=click.Path(),
-    help=(
-        "Path to a Pieces format file used to filter the dataset to specific chains in"
-        "specific files. All other PDB files included in the input will be ignored."
-    ),
-)
-@click.option(
     "--frame-edge-length",
     type=float,
-    default=12.0,
+    default=21.0,
     help=(
         "Edge length of the cube of space around each residue that will be voxelized. "
-        "Default = 12.0 Angstroms."
+        "Default = 21.0 Angstroms."
     ),
 )
 @click.option(
@@ -78,15 +55,6 @@ from aposteriori.data_prep.create_frame_data_set import (
     help=("Number of processes to be used to create the dataset. Default = 1."),
 )
 @click.option(
-    "-z",
-    "--is_pdb_gzipped",
-    is_flag=True,
-    help=(
-        "If True, this flag indicates that the structure files are gzipped. Default = "
-        "False."
-    ),
-)
-@click.option(
     "-r",
     "--recursive",
     is_flag=True,
@@ -99,15 +67,6 @@ from aposteriori.data_prep.create_frame_data_set import (
     help=(
         "Sets the verbosity of the output, use `-v` for low level output or `-vv` for "
         "even more information."
-    ),
-)
-@click.option(
-    "-cb",
-    "--encode_cb",
-    type=bool,
-    default=True,
-    help=(
-        "Encode the Cb at an average position (-0.741287356, -0.53937931, -1.224287356) in the aligned frame, even for Glycine residues. Default = True"
     ),
 )
 @click.option(
@@ -125,35 +84,22 @@ from aposteriori.data_prep.create_frame_data_set import (
             "CNOCBCAP",
         ]
     ),
-    default="CNO",
+    default="CNOCACB",
     required=True,
     help=(
-        "Encodes atoms in different channels, depending on atom types. Default is CNO, other options are ´CNOCB´ and `CNOCACB` to encode the Cb or Cb and Ca in different channels respectively. "
-        "Charged and polar versions can be used with CNOCACBQ and CNOCACBP respectively."
-    ),
-)
-@click.option(
-    "-d",
-    "--download_file",
-    type=click.Path(exists=True, readable=True),
-    help=(
-        "Path to csv file with PDB codes to be voxelised. The biological assembly will be used for download. PDB codes will be downloaded the /pdb/ folder."
+        "Encodes atoms in different channels, depending on atom types. "
+        "Default is CNOCACB, other options are ´CNO´ and `CNOCACB` to encode the Cb or Cb and Ca in different channels respectively."
+        " Charged and polar versions can be used with CNOCACBQ and CNOCACBP respectively."
     ),
 )
 @click.option(
     "-g",
     "--voxels_as_gaussian",
     type=bool,
-    default=False,
+    default=True,
     help=(
         "Boolean - whether to encode voxels as gaussians (True) or voxels (False). The gaussian representation uses the wanderwaal's radius of each atom using the formula e^(-x^2) where x is Vx - x)^2 + (Vy - y)^2) + (Vz - z)^2)/ r^2 and  (Vx, Vy, Vz) is the position of the voxel in space. (x, y, z) is the position of the atom in space, r is the Van der Waal’s radius of the atom. They are then normalized to add up to 1."
     ),
-)
-@click.option(
-    "-b",
-    "--blacklist_csv",
-    type=click.Path(exists=True, readable=True),
-    help=("Path to csv file with structures to be removed."),
 )
 @click.option(
     "-comp",
@@ -178,19 +124,38 @@ from aposteriori.data_prep.create_frame_data_set import (
     default=False,
     help=("Whether to tag rotamer information to the frame (True) or not (False)."),
 )
+@click.option(
+    "--pieces-filter-file",
+    type=click.Path(),
+    help=(
+        "Path to a Pieces format file used to filter the dataset to specific chains in"
+        "specific files. All other PDB files included in the input will be ignored."
+    ),
+)
+@click.option(
+    "-b",
+    "--blacklist_csv",
+    type=click.Path(exists=True, readable=True),
+    help=("Path to csv file with structures to be removed."),
+)
+@click.option(
+    "-d",
+    "--download_file",
+    type=click.Path(exists=True, readable=True),
+    help=(
+        "Path to csv file with PDB codes to be voxelised. The biological assembly will be used for download. PDB codes will be downloaded the /pdb/ folder."
+    ),
+)
 def cli(
     structure_file_folder: str,
     output_folder: str,
     name: str,
-    extension: str,
     pieces_filter_file: str,
     frame_edge_length: float,
     voxels_per_side: int,
     processes: int,
-    is_pdb_gzipped: bool,
     recursive: bool,
     verbose: int,
-    encode_cb: bool,
     atom_encoder: str,
     download_file: str,
     voxels_as_gaussian: bool,
@@ -236,7 +201,6 @@ def cli(
     └─.attrs['make_frame_dataset_ver']: str - Version used to produce the dataset.
     └─.attrs['frame_dims']: t.Tuple[int, int, int, int] - Dimentsions of the frame.
     └─.attrs['atom_encoder']: t.List[str] - Lables used for the encoding (eg, ["C", "N", "O"]).
-    └─.attrs['encode_cb']: bool - Whether a Cb atom was added at the avg position of (-0.741287356, -0.53937931, -1.224287356).
     └─.attrs['atom_filter_fn']: str - Function used to filter the atoms in the frame.
     └─.attrs['residue_encoder']: t.List[str] - Ordered list of residues corresponding to the encoding used.
     └─.attrs['frame_edge_length']: float - Length of the frame in Angstroms (A)
@@ -245,10 +209,10 @@ def cli(
     So hdf5['1ctf']['A']['58'] would be an array for the voxelized.
     """
     # If a download file is specified, open the file and download
-    if download_file and pathlib.Path(download_file).exists():
+    if download_file and Path(download_file).exists():
         structure_files: t.List[StrOrPath] = download_pdb_from_csv_file(
-            pdb_csv_file=pathlib.Path(download_file),
-            pdb_outpath=pathlib.Path(output_folder),
+            pdb_csv_file=Path(download_file),
+            pdb_outpath=Path(output_folder),
             verbosity=verbose,
             workers=processes,
             voxelise_all_states=voxelise_all_states,
@@ -256,17 +220,21 @@ def cli(
         # TODO check if structure files is a flat list
     else:
         # Extract all the PDBs in folder:
-        if pathlib.Path(structure_file_folder).exists():
-            structure_folder_path = pathlib.Path(structure_file_folder)
-            structure_files: t.List[StrOrPath] = list(
-                structure_folder_path.glob(f"**/*{extension}")
-                if recursive
-                else structure_folder_path.glob(f"*{extension}")
-            )
+        if Path(structure_file_folder).exists():
+            structure_folder_path = Path(structure_file_folder)
+            structure_files: t.List[StrOrPath] = [
+                f
+                for f in (
+                    structure_folder_path.rglob("*")
+                    if recursive
+                    else structure_folder_path.glob("*")
+                )
+                if f.suffix.lower() in VALID_EXT
+                or f.name.lower().endswith(tuple(VALID_EXT))
+            ]
             if not structure_files:
                 print(
-                    f"No structure_files found in `{structure_folder_path}`. Did you mean to "
-                    f"use the recursive flag?"
+                    f"No structure_files found in `{structure_folder_path}` with extensions {VALID_EXT}. Did you mean to use the recursive flag?"
                 )
                 sys.exit()
         else:
@@ -311,9 +279,7 @@ def cli(
         atom_filter_fn=default_atom_filter,
         pieces_filter_file=pieces_filter_file,
         processes=processes,
-        is_pdb_gzipped=is_pdb_gzipped,
         verbosity=verbose,
-        encode_cb=encode_cb,
         voxels_as_gaussian=voxels_as_gaussian,
         blacklist_csv=blacklist_csv,
         gzip_compression=compression_gzip,

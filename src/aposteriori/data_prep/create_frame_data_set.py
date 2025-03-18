@@ -4,8 +4,6 @@ In this type of dataset, all individual entries are stored separately in a flat
 structure.
 """
 import csv
-import numba
-import math
 import gzip
 import multiprocessing as mp
 import pathlib
@@ -22,15 +20,16 @@ import ampal
 import ampal.geometry as geometry
 import h5py
 import numpy as np
-from ampal.amino_acids import residue_charge, polarity_Zimmerman, standard_amino_acids
+from ampal.amino_acids import polarity_Zimmerman, residue_charge, standard_amino_acids
+from tqdm import tqdm
 
 from aposteriori.config import (
     ATOM_VANDERWAAL_RADII,
     MAKE_FRAME_DATASET_VER,
     PDB_REQUEST_URL,
     STD_RESIDUES_1,
-    UNCOMMON_RESIDUE_DICT,
     STD_RESIDUES_3,
+    UNCOMMON_RESIDUE_DICT,
 )
 
 
@@ -49,7 +48,6 @@ class DatasetMetadata:
     make_frame_dataset_ver: str
     frame_dims: t.Tuple[int, int, int, int]
     atom_encoder: t.List[str]
-    encode_cb: bool
     atom_filter_fn: str
     residue_encoder: t.List[str]
     frame_edge_length: float
@@ -365,9 +363,7 @@ def encode_residue(residue: str) -> np.ndarray:
 
     # Handle uncommon residues
     if residue in UNCOMMON_RESIDUE_DICT:
-        warnings.warn(f"{residue} is not a standard residue.")
         residue_label = UNCOMMON_RESIDUE_DICT[residue]
-        warnings.warn(f"Residue converted to {residue_label}.")
     else:
         assert (
             residue in STD_RESIDUES_3
@@ -733,7 +729,9 @@ def create_residue_frame(
     # Check whether central atom is C:
     if "CA" in codec.atomic_labels:
         if voxels_as_gaussian:
-            np.testing.assert_array_less(frame[center_adjust, center_adjust, center_adjust][3], 1)
+            np.testing.assert_array_less(
+                frame[center_adjust, center_adjust, center_adjust][3], 1
+            )
             assert (
                 0 < frame[center_adjust, center_adjust, center_adjust][3] <= 1
             ), f"The central atom value should be between 0 and 1 but was {frame[center_adjust, center_adjust, center_adjust][3]}"
@@ -743,7 +741,9 @@ def create_residue_frame(
             ), f"The central atom should be Carbon, but it is {frame[center_adjust, center_adjust, center_adjust]}."
     else:
         if voxels_as_gaussian:
-            np.testing.assert_array_less(frame[center_adjust, center_adjust, center_adjust][0], 1)
+            np.testing.assert_array_less(
+                frame[center_adjust, center_adjust, center_adjust][0], 1
+            )
             assert (
                 0 < frame[center_adjust, center_adjust, center_adjust][0] <= 1
             ), f"The central atom value should be between 0 and 1 but was {frame[center_adjust, center_adjust, center_adjust][0]}"
@@ -763,7 +763,6 @@ def voxelise_assembly(
     chain_dict,
     frame_edge_length,
     voxels_per_side,
-    encode_cb,
     codec,
     voxels_as_gaussian,
     tag_rotamers,
@@ -791,14 +790,16 @@ def voxelise_assembly(
             del atom.parent.atoms[atom.res_label]
             del atom
     if "CB" in codec.atomic_labels:
-        if encode_cb:
-            for chain in assembly:
-                if not isinstance(chain, ampal.Polypeptide):
-                    continue
-                for residue in chain:
-                    encode_cb_prevox(residue)
+        for chain in assembly:
+            if not isinstance(chain, ampal.Polypeptide):
+                continue
+            for residue in chain:
+                encode_cb_prevox(residue)
     remaining_atoms = len(list(assembly.get_atoms()))
-    print(f"{name}: Filtered {total_atoms - remaining_atoms} of {total_atoms} atoms.")
+    if verbosity > 0:
+        print(
+            f"{name}: Filtered {total_atoms - remaining_atoms} of {total_atoms} atoms."
+        )
     for chain in assembly:
         if chain_filter_list:
             if chain.id.upper() not in chain_filter_list:
@@ -861,9 +862,7 @@ def create_frames_from_structure(
     voxels_per_side: int,
     atom_filter_fn: t.Callable[[ampal.Atom], bool],
     chain_filter_list: t.Optional[t.List[str]],
-    is_pdb_gzipped: bool,
     verbosity: int,
-    encode_cb: bool,
     codec: object,
     voxels_as_gaussian: bool,
     voxelise_all_states: bool,
@@ -887,13 +886,8 @@ def create_frames_from_structure(
         removed.
     chain_filter_list: t.Optional[t.List[str]]
         Chains to be processed.
-    is_pdb_gzipped: bool
-        Indicates if structure files are gzipped or not.
     verbosity: int
         Level of logging sent to std out.
-    encode_cb: bool
-        Whether to encode the Cb at an average position in the frame. If
-        True, it will not be filtered by the `atom_filter_fn`.
     codec: object
         Codec object with encoding instructions.
     voxels_as_gaussian: bool
@@ -903,7 +897,7 @@ def create_frames_from_structure(
     """
     name = structure_path.name.split(".")[0]
     chain_dict: ChainDict = {}
-    if is_pdb_gzipped:
+    if str(structure_path).endswith(".gz"):
         with gzip.open(str(structure_path), "rb") as inf:
             assembly = ampal.load_pdb(inf.read().decode(), path=False)
     else:
@@ -923,7 +917,6 @@ def create_frames_from_structure(
                 chain_dict,
                 frame_edge_length,
                 voxels_per_side,
-                encode_cb,
                 codec,
                 voxels_as_gaussian,
                 tag_rotamers,
@@ -946,7 +939,6 @@ def create_frames_from_structure(
             chain_dict,
             frame_edge_length,
             voxels_per_side,
-            encode_cb,
             codec,
             voxels_as_gaussian,
             tag_rotamers,
@@ -988,9 +980,7 @@ def process_single_path(
     atom_filter_fn: t.Callable[[ampal.Atom], bool],
     chain_filter_dict: t.Optional[t.Dict[str, t.List[str]]],
     errors: t.Dict[str, str],
-    is_pdb_gzipped: bool,
     verbosity: int,
-    encode_cb: bool,
     codec: object,
     voxels_as_gaussian: bool,
     voxelise_all_states: bool,
@@ -1001,7 +991,8 @@ def process_single_path(
     result: t.Union[t.Tuple[str, ChainDict], str]
     while True:
         structure_path = path_queue.get()
-        print(f"Processing `{structure_path}`...")
+        if verbosity > 0:
+            print(f"Processing `{structure_path}`...")
         try:
             if chain_filter_dict:
                 chain_filter_list = chain_filter_dict[
@@ -1015,9 +1006,7 @@ def process_single_path(
                 voxels_per_side,
                 atom_filter_fn,
                 chain_filter_list,
-                is_pdb_gzipped,
                 verbosity,
-                encode_cb,
                 codec,
                 voxels_as_gaussian=voxels_as_gaussian,
                 voxelise_all_states=voxelise_all_states,
@@ -1044,69 +1033,80 @@ def save_results(
     metadata: DatasetMetadata,
     gzip_compression: bool,
 ):
-    """Saves voxelized structures to a hdf5 object."""
-    with h5py.File(str(h5_path), "w") as hd5:
-        while True:
-            # Requires explicit type annotation as I can't figure out how to annotate
-            # the SimpleQueue object directly
-            result: t.Tuple[str, ChainDict] = result_queue.get()
-            if result == "BREAK":
-                break
-            pdb_code, chain_dict = result
-            print(f"{pdb_code}: Storing results...")
-            if pdb_code in hd5:
-                print(f"{pdb_code}:\t\tError PDB already found in dataset skipping.")
-            else:
-                # Encode metadata:
-                metadata_dict = metadata.__dict__
-                # Loop through metadata dataclass and add it as attribute:
-                for meta, meta_attribute in metadata_dict.items():
-                    hd5.attrs[str(meta)] = meta_attribute
+    """Saves voxelized structures to an HDF5 file while resuming if needed."""
 
-                pdb_group = hd5.create_group(pdb_code)
-                for chain_id, res_results in chain_dict.items():
-                    # This is required as at times the pdb does not have a chain name:
-                    chain_id = "A" if not chain_id else chain_id
+    lock = mp.Manager().Lock()  # Lock for exclusive write access
+
+    with h5py.File(str(h5_path), "a", libver="latest", rdcc_nbytes=1024) as hd5:
+        existing_pdbs = set(hd5.keys())
+
+        with tqdm(total=total_files, desc="Processing Structures") as pbar:
+            while True:
+                result = result_queue.get()
+                if result == "BREAK":
+                    break
+
+                pdb_code, chain_dict = result
+
+                # **Skip duplicate writes**
+                if pdb_code in existing_pdbs:
                     if verbosity > 0:
-                        print(f"{pdb_code}:\tStoring chain {chain_id}...")
-                    if chain_id in pdb_group:
-                        print(
-                            f"{pdb_code}:\t\tError chain {chain_id} found in dataset, "
-                            f"skipping."
-                        )
-                        continue
-                    chain_group = pdb_group.create_group(chain_id)
-                    for res_result in res_results:
-                        if verbosity > 1:
-                            print(
-                                f"{pdb_code}:\t\tStoring chain {res_result.residue_id}..."
+                        print(f"{pdb_code}: Skipping (already in dataset).")
+                    complete.value += 1
+                    pbar.update(1)
+                    continue
+
+                if verbosity > 0:
+                    print(f"{pdb_code}: Storing results...")
+
+                with lock:  # Prevent concurrent writes
+                    pdb_group = hd5.require_group(pdb_code)
+
+                    for chain_id, res_results in chain_dict.items():
+                        chain_group = pdb_group.require_group(chain_id)
+
+                        for res_result in res_results:
+                            if res_result.residue_id in chain_group:
+                                continue  # Skip if already exists
+
+                            # **Create dataset & set attributes in one step**
+                            dataset = chain_group.create_dataset(
+                                res_result.residue_id,
+                                data=res_result.data,
+                                dtype=np.float16
+                                if metadata.voxels_as_gaussian
+                                else bool,
+                                compression="gzip" if gzip_compression else None,
                             )
-                        if res_result.residue_id in chain_group:
-                            print(
-                                f"{pdb_code}:\t\tError {res_result.residue_id} in "
-                                f"chain group, skipping."
+
+                            dataset.attrs.update(
+                                {
+                                    "label": res_result.label,
+                                    "rotamers": res_result.rotamers,
+                                    "encoded_residue": res_result.encoded_residue,
+                                }
                             )
-                            continue
-                        # Change type of voxel saved to hdf5 file depending on type of voxel used:
-                        voxel_output_type = (
-                            float if metadata_dict["voxels_as_gaussian"] else bool
-                        )
-                        res_dataset = chain_group.create_dataset(
-                            res_result.residue_id,
-                            data=res_result.data,
-                            dtype=voxel_output_type,
-                            compression="gzip" if gzip_compression else None,
-                        )
-                        res_dataset.attrs["label"] = res_result.label
-                        res_dataset.attrs["rotamers"] = res_result.rotamers
-                        res_dataset.attrs[
-                            "encoded_residue"
-                        ] = res_result.encoded_residue
-                        frames.value += 1
-                print(f"{pdb_code}: Finished processing.")
-            complete.value += 1
-            print(f"Files processed {complete.value}/{total_files}.")
-        print(f"Finished processing files.")
+
+                            frames.value += 1
+
+                        # **Explicitly close the chain group**
+                        del chain_group
+
+                    # **Explicitly close the PDB group**
+                    del pdb_group
+
+                    # **Flush writes to ensure all data is committed**
+                    hd5.flush()
+
+                existing_pdbs.add(pdb_code)
+                complete.value += 1
+                pbar.update(1)
+
+            if verbosity > 0:
+                print(f"Finished processing files.")
+
+        # **Explicitly close the file (no lingering objects)**
+        hd5.close()
 
 
 def process_paths(
@@ -1117,9 +1117,7 @@ def process_paths(
     atom_filter_fn: t.Callable[[ampal.Atom], bool],
     chain_filter_dict: t.Optional[t.Dict[str, t.List[str]]],
     processes: int,
-    is_pdb_gzipped: bool,
     verbosity: int,
-    encode_cb: bool,
     codec: Codec,
     voxels_as_gaussian: bool,
     gzip_compression: bool = True,
@@ -1148,12 +1146,8 @@ def process_paths(
         Chains to be selected from the PDB file.
     processes: int
         Number of processes to used to process structure files.
-    is_pdb_gzipped: bool
-        Indicates if structure files are gzipped or not.
     verbosity: int
         Level of logging sent to std out.
-    encode_cb: bool
-        Whether to encode the Cb at an average position in the frame.
     codec: object
         Codec object with encoding instructions.
     voxels_as_gaussian: bool
@@ -1163,39 +1157,34 @@ def process_paths(
     """
 
     with mp.Manager() as manager:
-        # Need to ignore the type here due to a weird problem with the Queue type not
-        # being found
-        path_queue = manager.Queue()  # type: ignore
-        total_paths = len(structure_file_paths)
-        for path in structure_file_paths:
-            path_queue.put(path)
-        result_queue = manager.Queue()  # type: ignore
-        complete = manager.Value("i", 0)  # type: ignore
-        frames = manager.Value("i", 0)  # type: ignore
-        errors = manager.dict()  # type: ignore
-        total = len(structure_file_paths)
-        workers = [
-            mp.Process(
-                target=process_single_path,
-                args=(
-                    path_queue,
-                    result_queue,
-                    frame_edge_length,
-                    voxels_per_side,
-                    atom_filter_fn,
-                    chain_filter_dict,
-                    errors,
-                    is_pdb_gzipped,
-                    verbosity,
-                    encode_cb,
-                    codec,
-                    voxels_as_gaussian,
-                    voxelise_all_states,
-                    tag_rotamers,
-                ),
-            )
-            for proc_i in range(processes)
+        path_queue, result_queue = manager.Queue(), manager.Queue()
+        complete, frames = manager.Value("i", 0), manager.Value("i", 0)
+        errors = manager.dict()
+
+        # Load existing dataset keys to skip processed files
+        existing_pdbs = set()
+        if output_path.exists():
+            if verbosity > 0:
+                print(f"Checking existing dataset at `{output_path}`...")
+            with h5py.File(str(output_path), "r") as hd5:
+                existing_pdbs.update(hd5.keys())
+
+        # Filter files to process
+        unprocessed_files = [
+            p for p in structure_file_paths if p.stem.split(".")[0] not in existing_pdbs
         ]
+        total_files = len(structure_file_paths)
+        processed_files = total_files - len(unprocessed_files)
+
+        if verbosity > 0:
+            print(f"Will attempt to process {total_files} structure file/s.")
+            print(f"Skipping {processed_files} already processed structures.")
+            print(f"Processing {len(unprocessed_files)} new structures.")
+
+        for path in unprocessed_files:
+            path_queue.put(path)
+
+        # Metadata for the dataset
         metadata = DatasetMetadata(
             make_frame_dataset_ver=MAKE_FRAME_DATASET_VER,
             frame_dims=(
@@ -1205,18 +1194,41 @@ def process_paths(
                 codec.encoder_length,
             ),
             atom_encoder=list(codec.atomic_labels),
-            encode_cb=encode_cb,
-            atom_filter_fn=str(atom_filter_fn),
+            atom_filter_fn=str(default_atom_filter),
             residue_encoder=list(standard_amino_acids.values()),
             frame_edge_length=frame_edge_length,
             voxels_as_gaussian=voxels_as_gaussian,
         )
+
+        # Create worker processes
+        workers = [
+            mp.Process(
+                target=process_single_path,
+                args=(
+                    path_queue,
+                    result_queue,
+                    frame_edge_length,
+                    voxels_per_side,
+                    default_atom_filter,
+                    None,
+                    errors,
+                    verbosity,
+                    codec,
+                    voxels_as_gaussian,
+                    voxelise_all_states,
+                    tag_rotamers,
+                ),
+            )
+            for _ in range(processes)
+        ]
+
+        # Storage process
         storer = mp.Process(
             target=save_results,
             args=(
                 result_queue,
                 output_path,
-                total_paths,
+                len(unprocessed_files),
                 complete,
                 frames,
                 verbosity,
@@ -1224,31 +1236,34 @@ def process_paths(
                 gzip_compression,
             ),
         )
-        all_processes = workers + [storer]
-        for proc in all_processes:
+
+        # Start all processes
+        for proc in workers + [storer]:
             proc.start()
-        while (complete.value + len(errors)) < total:
-            if not all([p.is_alive() for p in all_processes]):
-                print("One or more of the processes died, aborting...")
-                break
-            time.sleep(5)
-        else:
-            result_queue.put("BREAK")
-            storer.join()
-        for proc in all_processes:
+
+        # Display progress bar
+        with tqdm(total=len(unprocessed_files), desc="Processing Structures") as pbar:
+            while (complete.value + len(errors)) < len(unprocessed_files):
+                if any(not p.is_alive() for p in workers + [storer]):
+                    if verbosity > 0:
+                        print("One or more processes died, aborting...")
+                    break
+                pbar.update(complete.value - pbar.n)
+                time.sleep(2)
+
+        # Ensure all results are saved before exiting
+        result_queue.put("BREAK")
+        storer.join()
+
+        # Terminate all processes
+        for proc in workers + [storer]:
             proc.terminate()
         if (verbosity > 0) and (errors):
             print(f"There were {len(errors)} errors while creating the dataset:")
             for path, error in errors.items():
-                print(f"\t{path}:")
-                print(f"\t\t{error}")
-        else:
-            print(f"There were {len(errors)} errors while creating the dataset.")
-        print(
-            f"Created frame dataset at `{output_path.resolve()}` containing "
-            f"{frames.value} residue frames."
-        )
-    return
+                print(f"\t{path}: {error}")
+
+    return output_path
 
 
 def _select_pdb_chain(
@@ -1268,7 +1283,7 @@ def _select_pdb_chain(
 
     Parameters
     ----------
-    pdb_path: pathlib.Path
+    output_pdb_path: pathlib.Path
         Path to the pdb structure.
     chain: str
         Chain to be selected for the pdb
@@ -1418,7 +1433,9 @@ def _fetch_pdb(
 
 
 def filter_structures_by_blacklist(
-    structure_files: t.List[pathlib.Path], blacklist_csv_file: pathlib.Path
+    structure_files: t.List[pathlib.Path],
+    blacklist_csv_file: pathlib.Path,
+    verbosity: int,
 ) -> t.List[StrOrPath]:
     """
     Filters structures contained in a blacklist csv file.
@@ -1429,6 +1446,8 @@ def filter_structures_by_blacklist(
         List of paths to pdb files to be processed into frames
     blacklist_csv_file: pathlib.Path
         Path to blacklist csv.
+    verbosity: int
+        Verbosity level.
 
     Returns
     -------
@@ -1463,9 +1482,10 @@ def filter_structures_by_blacklist(
     # Calculate difference
     old_length = len(structure_files)
     new_length = len(filtered_structure_files)
-    print(
-        f"Filtered {old_length - new_length} structures from the original {old_length} structures"
-    )
+    if verbosity > 0:
+        print(
+            f"Filtered {old_length - new_length} structures from the original {old_length} structures"
+        )
 
     return filtered_structure_files
 
@@ -1532,10 +1552,8 @@ def make_frame_dataset(
     atom_filter_fn: t.Callable[[ampal.Atom], bool] = default_atom_filter,
     pieces_filter_file: t.Optional[StrOrPath] = None,
     processes: int = 1,
-    is_pdb_gzipped: bool = False,
     verbosity: int = 1,
     require_confirmation: bool = True,
-    encode_cb: bool = True,
     voxels_as_gaussian: bool = False,
     blacklist_csv: pathlib.Path = None,
     gzip_compression: bool = True,
@@ -1569,14 +1587,10 @@ def make_frame_dataset(
         chains to be included in the dataset.
     processes: int
         Number of processes to used to process structure files.
-    is_pdb_gzipped: bool
-        Indicates if structure files are gzipped or not.
     verbosity: int
         Level of logging sent to std out.
     require_confirmation: bool
         If True, the user will be prompted to start creating the dataset.
-    encode_cb: bool
-        Whether to encode the Cb at an average position in the frame.
     voxels_as_gaussian: bool
         Whether the voxels are encoded as a floating point of a gaussian (True) or boolean (False).
         This converts an atom at a coordinate, with specific modifiers due to discretization,
@@ -1629,7 +1643,7 @@ def make_frame_dataset(
         # If blacklist path exists:
         if pathlib.Path(blacklist_csv).exists():
             filtered_structure_files = filter_structures_by_blacklist(
-                structure_file_paths, pathlib.Path(blacklist_csv)
+                structure_file_paths, pathlib.Path(blacklist_csv), verbosity=verbosity
             )
         else:
             # Blacklist not fount:
@@ -1664,9 +1678,7 @@ def make_frame_dataset(
         processes=processes,
         atom_filter_fn=atom_filter_fn,
         chain_filter_dict=chain_filter_dict,
-        is_pdb_gzipped=is_pdb_gzipped,
         verbosity=verbosity,
-        encode_cb=encode_cb,
         codec=codec,
         voxels_as_gaussian=voxels_as_gaussian,
         gzip_compression=gzip_compression,

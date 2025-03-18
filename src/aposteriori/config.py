@@ -11,6 +11,7 @@ ATOM_VANDERWAAL_RADII = {
     2: 0.6,  # Oxygen
 }
 PDB_REQUEST_URL = "https://files.rcsb.org/download/"
+VALID_EXT = {".pdb", ".pdb1", ".pdb.gz", ".pdb1.gz"}
 STD_RESIDUES_3 = np.array(list(standard_amino_acids.values()))
 STD_RESIDUES_1 = np.array(list(standard_amino_acids.keys()))
 UNCOMMON_RESIDUE_DICT = {
