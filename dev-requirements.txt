@@ -6,3 +6,4 @@ numpy
 pytest==6.2.5
 setuptools
 flake8
+tqdm

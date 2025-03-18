@@ -12,7 +12,9 @@ dependencies = [
     "click==8.1.7",
     "h5py==3.8.0",
     "numpy",
-    "flake8"
+    "flake8",
+    "tqdm"
+
     ]
 
 [project.scripts]
