@@ -95,11 +95,16 @@ def test_create_residue_frame_cnocb_encoding(residue_number):
     voxels_per_side = 21
     centre = voxels_per_side // 2
     max_dist = np.sqrt(((frame_edge_length / 2) ** 2) * 3)
-    for atom in (
-        a
-        for a in assembly.get_atoms(ligands=False)
-        if cfds.within_frame(a, frame_edge_length)
-    ):
+
+    # Get atoms
+    all_atoms = list(assembly.get_atoms(ligands=False))  # Get all atoms
+    all_coords = np.array([atom.array for atom in all_atoms])  # Convert to NumPy array
+
+    # Use the vectorized within_frame to get a boolean mask.
+    mask = cfds.within_frame(all_coords, frame_edge_length)
+    # Filter atoms and coordinates
+    valid_atoms = [atom for atom, keep in zip(all_atoms, mask) if keep]
+    for atom in valid_atoms:
         assert g.distance(atom, (0, 0, 0)) <= max_dist, (
             "All atoms filtered by `within_frame` should be within "
             "`frame_edge_length/2` of the origin"
@@ -168,11 +173,16 @@ def test_create_residue_frame_backbone_only(residue_number):
     voxels_per_side = 21
     centre = voxels_per_side // 2
     max_dist = np.sqrt(((frame_edge_length / 2) ** 2) * 3)
-    for atom in (
-        a
-        for a in assembly.get_atoms(ligands=False)
-        if cfds.within_frame(a, frame_edge_length)
-    ):
+
+    # Get atoms
+    all_atoms = list(assembly.get_atoms(ligands=False))  # Get all atoms
+    all_coords = np.array([atom.array for atom in all_atoms])  # Convert to NumPy array
+
+    # Use the vectorized within_frame to get a boolean mask.
+    mask = cfds.within_frame(all_coords, frame_edge_length)
+    # Filter atoms and coordinates
+    valid_atoms = [atom for atom, keep in zip(all_atoms, mask) if keep]
+    for atom in valid_atoms:
         assert g.distance(atom, (0, 0, 0)) <= max_dist, (
             "All atoms filtered by `within_frame` should be within "
             "`frame_edge_length/2` of the origin"
