@@ -1069,7 +1069,7 @@ def save_results(
                             if res_result.residue_id in chain_group:
                                 continue  # Skip if already exists
 
-                            # **Create dataset & set attributes in one step**
+                            # Create dataset & set attributes in one step
                             dataset = chain_group.create_dataset(
                                 res_result.residue_id,
                                 data=res_result.data,
@@ -1089,23 +1089,22 @@ def save_results(
 
                             frames.value += 1
 
-                        # **Explicitly close the chain group**
+                        # Explicitly close the chain group
                         del chain_group
 
-                    # **Explicitly close the PDB group**
+                    # Explicitly close the PDB group
                     del pdb_group
 
-                    # **Flush writes to ensure all data is committed**
+                    # Flush writes to ensure all data is committed
                     hd5.flush()
 
                 existing_pdbs.add(pdb_code)
                 complete.value += 1
                 pbar.update(1)
 
-            if verbosity > 0:
-                print(f"Finished processing files.")
+            print(f"Finished processing files.")
 
-        # **Explicitly close the file (no lingering objects)**
+        # Explicitly close the file (no lingering objects)
         hd5.close()
 
 
@@ -1114,8 +1113,6 @@ def process_paths(
     output_path: pathlib.Path,
     frame_edge_length: float,
     voxels_per_side: int,
-    atom_filter_fn: t.Callable[[ampal.Atom], bool],
-    chain_filter_dict: t.Optional[t.Dict[str, t.List[str]]],
     processes: int,
     verbosity: int,
     codec: Codec,
@@ -1138,12 +1135,6 @@ def process_paths(
         The number of voxels per edge that the cube of space will be converted into i.e.
         the final cube will be `voxels_per_side`^3. This must be a odd, positive integer
         so that the CA atom can be placed at the centre of the frame.
-    atom_filter_fn: ampal.Atom -> bool
-        A function used to preprocess structures to remove atoms that are not to be
-        included in the final structure. By default water and side chain atoms will be
-        removed.
-    chain_filter_dict: t.Optional[t.Dict[str, t.List[str]]]
-        Chains to be selected from the PDB file.
     processes: int
         Number of processes to used to process structure files.
     verbosity: int
@@ -1676,8 +1667,6 @@ def make_frame_dataset(
         frame_edge_length=frame_edge_length,
         voxels_per_side=voxels_per_side,
         processes=processes,
-        atom_filter_fn=atom_filter_fn,
-        chain_filter_dict=chain_filter_dict,
         verbosity=verbosity,
         codec=codec,
         voxels_as_gaussian=voxels_as_gaussian,
