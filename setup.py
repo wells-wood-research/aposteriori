@@ -28,10 +28,5 @@ setup(
             "make-frame-dataset=aposteriori.data_prep.cli:cli",
         ],
     },
-    install_requires=[
-        "ampal==1.5.1",
-        "click==8.1.7",
-        "h5py==3.8.0",
-        "tqdm"
-    ],
+    install_requires=["ampal", "click", "h5py", "tqdm", "numpy<2.0.0"],
 )

@@ -2,7 +2,7 @@ ampal
 click
 h5py
 hypothesis
-numpy
+numpy<2.0.0
 pytest
 setuptools
 flake8

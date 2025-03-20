@@ -11,7 +11,7 @@ dependencies = [
     "ampal",
     "click",
     "h5py",
-    "numpy",
+    "numpy<2.0.0",
     "flake8",
     "tqdm",
     ]
