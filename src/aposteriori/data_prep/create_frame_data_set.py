@@ -8,9 +8,8 @@ import gzip
 import multiprocessing as mp
 import pathlib
 import sys
-import time
 import typing as t
-import urllib
+import urllib.request
 import warnings
 from dataclasses import dataclass
 from itertools import repeat
@@ -1068,17 +1067,23 @@ def save_results(
                         for res_result in res_results:
                             if res_result.residue_id in chain_group:
                                 continue  # Skip if already exists
+                            dataset_data = np.array(
+                                res_result.data,
+                                dtype=np.float16
+                                if metadata.voxels_as_gaussian
+                                else np.uint8,
+                            )
 
                             # Create dataset & set attributes in one step
                             dataset = chain_group.create_dataset(
                                 res_result.residue_id,
-                                data=res_result.data,
+                                data=dataset_data,
                                 dtype=np.float16
                                 if metadata.voxels_as_gaussian
-                                else bool,
+                                else np.uint8,
                                 compression="gzip" if gzip_compression else None,
                                 compression_opts=9,
-                                fillvalue=0.0
+                                fillvalue=0.0,
                             )
 
                             dataset.attrs.update(
@@ -1242,7 +1247,6 @@ def process_paths(
                         print("One or more processes died, aborting...")
                     break
                 pbar.update(complete.value - pbar.n)
-                time.sleep(2)
 
         # Ensure all results are saved before exiting
         result_queue.put("BREAK")
