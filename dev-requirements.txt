@@ -1,9 +1,9 @@
 ampal
-click==8.1.7
-h5py==3.8.0
-hypothesis==6.91.0
+click
+h5py
+hypothesis
 numpy
-pytest==6.2.5
+pytest
 setuptools
 flake8
 tqdm
