@@ -8,13 +8,12 @@ version = "2.5.0"
 requires-python = ">= 3.8"
 readme = "README.md"
 dependencies = [
-    "ampal==1.5.1",
+    "ampal",
     "click==8.1.7",
     "h5py==3.8.0",
     "numpy",
     "flake8",
-    "tqdm"
-
+    "tqdm",
     ]
 
 [project.scripts]
