@@ -1077,6 +1077,8 @@ def save_results(
                                 if metadata.voxels_as_gaussian
                                 else bool,
                                 compression="gzip" if gzip_compression else None,
+                                compression_opts=9,
+                                fillvalue=0.0
                             )
 
                             dataset.attrs.update(
