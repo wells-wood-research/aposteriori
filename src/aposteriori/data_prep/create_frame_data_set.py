@@ -14,12 +14,14 @@ import warnings
 from dataclasses import dataclass
 from itertools import repeat
 from multiprocessing import Pool
+from math import exp
 
 import ampal
 import ampal.geometry as geometry
 import h5py
 import numpy as np
 from ampal.amino_acids import polarity_Zimmerman, residue_charge, standard_amino_acids
+from numba import njit
 from tqdm import tqdm
 
 from aposteriori.config import (
@@ -304,7 +306,8 @@ def encode_cb_prevox(residue: ampal.Residue):
     return
 
 
-def within_frame(atoms: np.ndarray, frame_edge_length: float) -> np.ndarray:
+@njit(fastmath=True)
+def within_frame(atoms: np.ndarray, half_frame_edge: float) -> np.ndarray:
     """
     Vectorized version of within_frame to determine if atoms are inside the frame.
 
@@ -320,8 +323,15 @@ def within_frame(atoms: np.ndarray, frame_edge_length: float) -> np.ndarray:
     mask: np.ndarray
         Boolean mask indicating whether each atom is inside the frame.
     """
-    half_frame_edge = frame_edge_length / 2
-    return np.all(np.abs(atoms) <= half_frame_edge, axis=1)
+    mask = np.empty(atoms.shape[0], dtype=np.bool_)
+    for i in range(atoms.shape[0]):
+        x, y, z = atoms[i]
+        mask[i] = (
+            abs(x) <= half_frame_edge
+            and abs(y) <= half_frame_edge
+            and abs(z) <= half_frame_edge
+        )
+    return mask
 
 
 def discretize(
@@ -337,10 +347,11 @@ def discretize(
         Edge length of the voxels that are mapped onto cartesian space.
     adjust_by: int
     """
-
-    # I'm explicitly repeating this operation to make it explicit to the type checker
-    # that a triple is returned.
-    return np.round(atoms / voxel_edge_length).astype(np.int32) + adjust_by
+    out = np.empty((atoms.shape[0], 3), dtype=np.int32)
+    for i in range(atoms.shape[0]):
+        for j in range(3):
+            out[i, j] = int(np.round(atoms[i, j] / voxel_edge_length)) + adjust_by
+    return out
 
 
 def encode_residue(residue: str) -> np.ndarray:
@@ -376,6 +387,22 @@ def encode_residue(residue: str) -> np.ndarray:
     return residue_encoding
 
 
+@njit(fastmath=True)
+def convert_atom_to_gaussian_density_numba(x: float, y: float, z: float, radius: float) -> np.ndarray:
+    out = np.zeros((3, 3, 3), dtype=np.float16)
+    cx, cy, cz = x + 1.0, y + 1.0, z + 1.0  # shift into voxel grid
+    inv_radius_sq = 1.0 / (radius * radius)
+
+    for vy in range(3):
+        for vx in range(3):
+            for vz in range(3):
+                dx = vx - cx
+                dy = vy - cy
+                dz = vz - cz
+                out[vy, vx, vz] = exp(-(dx * dx + dy * dy + dz * dz) * inv_radius_sq)
+
+    return out / np.sum(out)
+
 def convert_atom_to_gaussian_density(
     modifiers_triple: t.Tuple[float, float, float],
     wanderwaal_radius: float,
@@ -407,6 +434,10 @@ def convert_atom_to_gaussian_density(
         3x3x3 Frame encoding for a gaussian atom
     """
     if optimized:
+        gaussian_frame = convert_atom_to_gaussian_density_numba(
+            *modifiers_triple, wanderwaal_radius
+        )
+    else:
         # Unpack x, y, z:
         x, y, z = modifiers_triple
         # Obtain x, y, z ranges for the gaussian
@@ -430,25 +461,7 @@ def convert_atom_to_gaussian_density(
         # e**(x + y + z)
         gaussian_frame = xyz_grids[0] * xyz_grids[1] * xyz_grids[2]
 
-    else:
-        gaussian_frame = np.zeros((3, 3, 3), dtype=float)
-        xyz_coordinates = np.where(gaussian_frame == 0)
-        # Identify the real (undiscretized) coordinates of the atom in the 3x3x3 matrix
-        x, y, z = modifiers_triple
-        x, y, z = x + 1, y + 1, z + 1
-        # The transpose changes arrays of [y], [x], [z] into [y, x, z]
-        for voxel_coord in np.array(xyz_coordinates).T:
-            # Extract voxel coords:
-            vy, vx, vz = voxel_coord
-            # Calculate Density:
-            voxel_density = np.exp(
-                -((vx - x) ** 2 + (vy - y) ** 2 + (vz - z) ** 2)
-                / wanderwaal_radius ** 2
-            )
-            # Add density to frame:
-            gaussian_frame[vy, vx, vz] = voxel_density
-
-    return gaussian_frame / gaussian_frame.sum()
+    return gaussian_frame.astype(np.float16)
 
 
 def calculate_atom_coord_modifier_within_voxel(
@@ -1546,7 +1559,6 @@ def make_frame_dataset(
     frame_edge_length: float,
     voxels_per_side: int,
     codec: Codec,
-    atom_filter_fn: t.Callable[[ampal.Atom], bool] = default_atom_filter,
     pieces_filter_file: t.Optional[StrOrPath] = None,
     processes: int = 1,
     verbosity: int = 1,
