@@ -3,7 +3,7 @@ import numpy as np
 from ampal.amino_acids import standard_amino_acids
 
 # Config paths
-MAKE_FRAME_DATASET_VER = "2.4.0"
+MAKE_FRAME_DATASET_VER = "2.5.0"
 ATOM_VANDERWAAL_RADII = {
     # Atomic number : Radius
     0: 0.7,  # Carbon

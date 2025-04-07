@@ -1,7 +1,7 @@
-from pathlib import Path
 import sys
 import typing as t
 import warnings
+from pathlib import Path
 
 import click
 
@@ -18,7 +18,13 @@ from aposteriori.data_prep.create_frame_data_set import (
 # {{{ CLI
 @click.command()
 @click.argument("structure_file_folder", type=click.Path(exists=True, file_okay=False))
-@click.option("-o", "--output-folder", type=click.Path(), default=".", help="Output directory. Default: `.`")
+@click.option(
+    "-o",
+    "--output-folder",
+    type=click.Path(),
+    default=".",
+    help="Output directory. Default: `.`",
+)
 @click.option(
     "-n",
     "--name",

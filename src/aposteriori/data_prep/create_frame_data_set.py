@@ -6,7 +6,6 @@ structure.
 import csv
 import gzip
 import multiprocessing as mp
-import pathlib
 import sys
 import typing as t
 import urllib.request
@@ -14,6 +13,7 @@ import warnings
 from dataclasses import dataclass
 from itertools import repeat
 from multiprocessing import Pool
+from pathlib import Path
 
 import ampal
 import ampal.geometry as geometry
@@ -22,14 +22,8 @@ import numpy as np
 from ampal.amino_acids import polarity_Zimmerman, residue_charge, standard_amino_acids
 from tqdm import tqdm
 
-from aposteriori.config import (
-    ATOM_VANDERWAAL_RADII,
-    MAKE_FRAME_DATASET_VER,
-    PDB_REQUEST_URL,
-    STD_RESIDUES_1,
-    STD_RESIDUES_3,
-    UNCOMMON_RESIDUE_DICT,
-)
+from aposteriori.config import (ATOM_VANDERWAAL_RADII, MAKE_FRAME_DATASET_VER, PDB_REQUEST_URL, STD_RESIDUES_1, STD_RESIDUES_3,
+                                UNCOMMON_RESIDUE_DICT, )
 
 
 @dataclass
@@ -70,7 +64,7 @@ class DatasetMetadata:
         return cls(**meta_dict)
 
 
-StrOrPath = t.Union[str, pathlib.Path]
+StrOrPath = t.Union[str, Path]
 ChainDict = t.Dict[str, t.List[ResidueResult]]
 # }}}
 
@@ -856,7 +850,7 @@ def voxelise_assembly(
 
 
 def create_frames_from_structure(
-    structure_path: pathlib.Path,
+    structure_path: Path,
     frame_edge_length: float,
     voxels_per_side: int,
     atom_filter_fn: t.Callable[[ampal.Atom], bool],
@@ -871,7 +865,7 @@ def create_frames_from_structure(
 
     Parameters
     ----------
-    structure_path: pathlib.Path
+    structure_path: Path
         Path to pdb file to be processed into frames
     frame_edge_length: float
         The length of the edges of the frame.
@@ -1018,106 +1012,155 @@ def process_single_path(
         elif isinstance(result, list):
             for curr_res in result:
                 result_queue.put(curr_res)
+                del curr_res
+            del result
         else:
             result_queue.put(result)
+            del result
 
 
 def save_results(
     result_queue: mp.SimpleQueue,
-    h5_path: pathlib.Path,
+    h5_path: Path,
     total_files: int,
     complete: mp.Value,
     frames: mp.Value,
     verbosity: int,
     metadata: DatasetMetadata,
     gzip_compression: bool,
+    close_every_n_structures: int = 50,
 ):
-    """Saves voxelized structures to an HDF5 file while resuming if needed."""
+    """
+    Saves voxelized structures to an HDF5 file while resuming if needed.
 
+    Parameters
+    ----------
+    result_queue: mp.SimpleQueue
+        Queue containing the results from the processing function.
+    h5_path: Path
+        Path to the HDF5 file where results will be saved.
+    total_files: int
+        Total number of files to process.
+    complete: mp.Value
+        Number of completed files processed (used for progress tracking).
+    frames: mp.Value
+        The voxelized frames generated from the structures.
+    verbosity: int
+        Verbosity level.
+    metadata: DatasetMetadata
+        The metadata of parameters used in the dataset.
+    gzip_compression: bool
+        Whether to use gzip compression for the HDF5 file.
+    close_every_n_structures: int
+
+
+    Returns
+    -------
+
+    """
     lock = mp.Manager().Lock()  # Lock for exclusive write access
+    # We count the number of processed files to close the file every n structures
+    processed_since_close = 0
 
-    with h5py.File(str(h5_path), "a", libver="latest", rdcc_nbytes=1024) as hd5:
-        existing_pdbs = set(hd5.keys())
+    # Open the HDF5 file in append mode
+    hd5 = h5py.File(str(h5_path), "a", libver="latest")
+    existing_pdbs = set(hd5.keys())
 
-        with tqdm(total=total_files, desc="Processing Structures") as pbar:
-            while True:
-                result = result_queue.get()
-                if result == "BREAK":
-                    break
+    with tqdm(total=total_files, desc="Processing Structures") as pbar:
+        while True:
+            result = result_queue.get()
+            if result == "BREAK":
+                break
 
-                pdb_code, chain_dict = result
+            pdb_code, chain_dict = result
 
-                # **Skip duplicate writes**
-                if pdb_code in existing_pdbs:
-                    if verbosity > 0:
-                        print(f"{pdb_code}: Skipping (already in dataset).")
-                    complete.value += 1
-                    pbar.update(1)
-                    continue
-
-                if verbosity > 0:
-                    print(f"{pdb_code}: Storing results...")
-
-                with lock:  # Prevent concurrent writes
-                    pdb_group = hd5.require_group(pdb_code)
-
-                    for chain_id, res_results in chain_dict.items():
-                        chain_group = pdb_group.require_group(chain_id)
-
-                        for res_result in res_results:
-                            if res_result.residue_id in chain_group:
-                                continue  # Skip if already exists
-                            dataset_data = np.array(
-                                res_result.data,
-                                dtype=np.float16
-                                if metadata.voxels_as_gaussian
-                                else np.uint8,
-                            )
-
-                            # Create dataset & set attributes in one step
-                            dataset = chain_group.create_dataset(
-                                res_result.residue_id,
-                                data=dataset_data,
-                                dtype=np.float16
-                                if metadata.voxels_as_gaussian
-                                else np.uint8,
-                                compression="gzip" if gzip_compression else None,
-                                compression_opts=9,
-                                fillvalue=0.0,
-                            )
-
-                            dataset.attrs.update(
-                                {
-                                    "label": res_result.label,
-                                    "rotamers": res_result.rotamers,
-                                    "encoded_residue": res_result.encoded_residue,
-                                }
-                            )
-
-                            frames.value += 1
-
-                        # Explicitly close the chain group
-                        del chain_group
-
-                    # Explicitly close the PDB group
-                    del pdb_group
-
-                    # Flush writes to ensure all data is committed
-                    hd5.flush()
-
-                existing_pdbs.add(pdb_code)
+            # If chain_dict is empty, possibly we skipped
+            if not chain_dict:
                 complete.value += 1
                 pbar.update(1)
+                continue
 
-            print(f"Finished processing files.")
+            # Skip duplicate writes
+            if pdb_code in existing_pdbs:
+                if verbosity > 0:
+                    print(f"{pdb_code}: Skipping (already in dataset).")
+                complete.value += 1
+                pbar.update(1)
+                continue
 
-        # Explicitly close the file (no lingering objects)
+            if verbosity > 0:
+                print(f"{pdb_code}: Storing results...")
+
+            with lock:  # Prevent concurrent writes
+                pdb_group = hd5.require_group(pdb_code)
+
+                for chain_id, res_results in chain_dict.items():
+                    chain_group = pdb_group.require_group(chain_id)
+
+                    for res_result in res_results:
+                        if res_result.residue_id in chain_group:
+                            continue  # Skip if already exists
+                        dataset_data = np.array(
+                            res_result.data,
+                            dtype=np.float16
+                            if metadata.voxels_as_gaussian
+                            else np.uint8,
+                        )
+
+                        # Create dataset & set attributes in one step
+                        dataset = chain_group.create_dataset(
+                            res_result.residue_id,
+                            data=dataset_data,
+                            dtype=np.float16
+                            if metadata.voxels_as_gaussian
+                            else np.uint8,
+                            compression="gzip" if gzip_compression else None,
+                            compression_opts=9,
+                            fillvalue=0.0 if metadata.voxels_as_gaussian else 0,
+                            chunks=metadata.frame_dims,
+                        )
+
+                        dataset.attrs.update(
+                            {
+                                "label": res_result.label,
+                                "rotamers": res_result.rotamers,
+                                "encoded_residue": res_result.encoded_residue,
+                            }
+                        )
+
+                        frames.value += 1
+
+                    # Explicitly close the chain group
+                    del chain_group
+
+                # Explicitly close the PDB group
+                del pdb_group
+
+                # Flush writes to ensure all data is committed
+                hd5.flush()
+
+            existing_pdbs.add(pdb_code)
+            complete.value += 1
+            pbar.update(1)
+
+            # Close and reopen the file every n structures
+            processed_since_close += 1
+            if processed_since_close >= close_every_n_structures:
+                hd5.close()  # close
+                # reopen
+                hd5 = h5py.File(str(h5_path), "a", libver="latest", rdcc_nbytes=1024)
+                existing_pdbs = set(hd5.keys())  # refresh
+                processed_since_close = 0
+
+        print(f"Finished processing files.")
+
+        # Explicitly close the file to avoid lingering objects)
         hd5.close()
 
 
 def process_paths(
-    structure_file_paths: t.List[pathlib.Path],
-    output_path: pathlib.Path,
+    structure_file_paths: t.List[Path],
+    output_path: Path,
     frame_edge_length: float,
     voxels_per_side: int,
     processes: int,
@@ -1132,9 +1175,9 @@ def process_paths(
 
     Parameters
     ----------
-    structure_file_paths: List[pathlib.Path]
+    structure_file_paths: List[Path]
         List of paths to pdb files to be processed into frames
-    output_path: pathlib.Path
+    output_path: Path
         Path where dataset will be written.
     frame_edge_length: float
         The length of the edges of the frame in Angstroms.
@@ -1264,14 +1307,14 @@ def process_paths(
 
 
 def _select_pdb_chain(
-    output_pdb_path: pathlib.Path,
+    output_pdb_path: Path,
     pdb_structure: ampal.Assembly,
     pdb_name: str,
     chain: str,
     verbosity: int,
     return_chain_path: bool = True,
     nmr_state: int = None,
-) -> (pathlib.Path, ampal.Assembly):
+) -> (Path, ampal.Assembly):
     """
     Select a chain from a pdb file. The chain will remove the original pdb file.
     At the moment we only support the selection of one chain at the time, meaning
@@ -1280,7 +1323,7 @@ def _select_pdb_chain(
 
     Parameters
     ----------
-    output_pdb_path: pathlib.Path
+    output_pdb_path: Path
         Path to the pdb structure.
     chain: str
         Chain to be selected for the pdb
@@ -1290,7 +1333,7 @@ def _select_pdb_chain(
     -------
     chain_pdb: ampal.Assembly
         Ampal object with the selected chain
-    output_pdb_path: pathlib.Path
+    output_pdb_path: Path
         Output path with chain
     """
     # Check if PDB structure is container and select assembly:
@@ -1322,11 +1365,11 @@ def _select_pdb_chain(
 def _fetch_pdb(
     pdb_code: str,
     verbosity: int,
-    output_folder: pathlib.Path,
+    output_folder: Path,
     download_assembly: bool = True,
     voxelise_all_states: bool = False,
     pdb_request_url: str = PDB_REQUEST_URL,
-) -> pathlib.Path:
+) -> Path:
     """
     Downloads a specific pdb file into a specific folder.
 
@@ -1430,8 +1473,8 @@ def _fetch_pdb(
 
 
 def filter_structures_by_blacklist(
-    structure_files: t.List[pathlib.Path],
-    blacklist_csv_file: pathlib.Path,
+    structure_files: t.List[Path],
+    blacklist_csv_file: Path,
     verbosity: int,
 ) -> t.List[StrOrPath]:
     """
@@ -1439,16 +1482,16 @@ def filter_structures_by_blacklist(
 
     Parameters
     ----------
-    structure_files: List[pathlib.Path]
+    structure_files: List[Path]
         List of paths to pdb files to be processed into frames
-    blacklist_csv_file: pathlib.Path
+    blacklist_csv_file: Path
         Path to blacklist csv.
     verbosity: int
         Verbosity level.
 
     Returns
     -------
-    filtered_structure_files: List[pathlib.Path]
+    filtered_structure_files: List[Path]
         List of filtered paths to pdb files to be processed into frames
     """
 
@@ -1488,9 +1531,9 @@ def filter_structures_by_blacklist(
 
 
 def download_pdb_from_csv_file(
-    pdb_csv_file: pathlib.Path,
+    pdb_csv_file: Path,
     verbosity: int,
-    pdb_outpath: pathlib.Path,
+    pdb_outpath: Path,
     workers: int,
     voxelise_all_states: bool,
 ):
@@ -1499,10 +1542,10 @@ def download_pdb_from_csv_file(
 
     Parameters
     ----------
-    pdb_csv_file: pathlib.Path
+    pdb_csv_file: Path
         Path to the csv file with PDB codes.
 
-    pdb_outpath: pathlib.Path
+    pdb_outpath: Path
         Path output where PDBs will be saved to.
 
     Returns
@@ -1515,12 +1558,12 @@ def download_pdb_from_csv_file(
         protein_csv = csv.reader(csv_file, delimiter=",")
         pdb_list = next(protein_csv)
     # Check if pdb folder exists
-    if pathlib.Path(pdb_outpath).exists():
+    if Path(pdb_outpath).exists():
         warnings.warn(
             f"{pdb_outpath} folder already exists. PDB files will be added next to already existing ones."
         )
     else:
-        pathlib.Path(pdb_outpath).mkdir(parents=True, exist_ok=True)
+        Path(pdb_outpath).mkdir(parents=True, exist_ok=True)
 
     # Use multiprocessing to download .pdb files faster
     with Pool(processes=workers) as p:
@@ -1552,16 +1595,16 @@ def make_frame_dataset(
     verbosity: int = 1,
     require_confirmation: bool = True,
     voxels_as_gaussian: bool = False,
-    blacklist_csv: pathlib.Path = None,
+    blacklist_csv: Path = None,
     gzip_compression: bool = True,
     voxelise_all_states: bool = True,
     tag_rotamers: bool = False,
-) -> pathlib.Path:
+) -> Path:
     """Creates a dataset of voxelized amino acid frames.
 
     Parameters
     ----------
-    structure_files: List[str or pathlib.Path]
+    structure_files: List[str or Path]
         List of paths to pdb files to be processed into frames
     output_folder: StrOrPath
         Path to folder where output will be written.
@@ -1599,7 +1642,7 @@ def make_frame_dataset(
 
     Returns
     -------
-    output_file_path: pathlib.Path
+    output_file_path: Path
         A path to the location of the output dataset.
     """
 
@@ -1623,7 +1666,7 @@ def make_frame_dataset(
                 chain_filter_dict[pdb_code].append(chain_id)
     else:
         chain_filter_dict = None
-    structure_file_paths = [pathlib.Path(x) for x in structure_files]
+    structure_file_paths = [Path(x) for x in structure_files]
     if chain_filter_dict:
         original_path_num = len(structure_file_paths)
         structure_file_paths = [
@@ -1638,9 +1681,9 @@ def make_frame_dataset(
     # Filter by blacklist:
     if blacklist_csv:
         # If blacklist path exists:
-        if pathlib.Path(blacklist_csv).exists():
+        if Path(blacklist_csv).exists():
             filtered_structure_files = filter_structures_by_blacklist(
-                structure_file_paths, pathlib.Path(blacklist_csv), verbosity=verbosity
+                structure_file_paths, Path(blacklist_csv), verbosity=verbosity
             )
         else:
             # Blacklist not fount:
@@ -1648,10 +1691,8 @@ def make_frame_dataset(
     else:
         filtered_structure_files = structure_file_paths
 
-    output_file_path = pathlib.Path(output_folder) / (name + ".hdf5")
+    output_file_path = Path(output_folder) / (name + ".hdf5")
     total_files = len(filtered_structure_files)
-    processed_files = 0
-    number_of_frames = 0
 
     print(f"Will attempt to process {total_files} structure file/s.")
     print(f"Output file will be written to `{output_file_path.resolve()}`.")
