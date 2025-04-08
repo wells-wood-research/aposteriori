@@ -3,6 +3,7 @@ click
 h5py
 hypothesis
 numpy<2.0.0
+psutil
 pytest
 setuptools
 flake8
