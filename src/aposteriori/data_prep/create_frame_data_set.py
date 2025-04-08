@@ -1188,9 +1188,9 @@ def save_results(
 def estimate_result_queue_maxsize(
     voxels_per_side: int,
     encoder_length: int,
-    residues_per_protein: int = 200,
+    residues_per_protein: int = 1500,
     bytes_per_voxel: int = 2,  # float16
-    memory_fraction: float = 0.70,
+    memory_fraction: float = 0.65,
 ) -> int:
     # Estimate size per structure
     voxels_per_frame = voxels_per_side ** 3
