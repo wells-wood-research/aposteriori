@@ -857,7 +857,7 @@ def voxelise_assembly(
                         rotamers=rota,
                     )
                 )
-                del array, encoded_residue, rota
+                del array, encoded_residue, rota, residue
                 gc.collect()
 
                 if verbosity > 1:
@@ -865,6 +865,7 @@ def voxelise_assembly(
         if verbosity > 0:
             print(f"{name}:\tFinished processing chain {chain.id}.")
 
+    gc.collect()
     return (name, chain_dict)
 
 
@@ -955,6 +956,10 @@ def create_frames_from_structure(
             voxels_as_gaussian,
             tag_rotamers,
         )
+    # Collect Garbage
+    del assembly
+    del chain_dict
+    gc.collect()
 
     return result
 
@@ -1066,6 +1071,9 @@ def save_worker_results(
 ):
     if verbosity > 1:
         print(f"[Worker {worker_id}] starting...")
+
+    error_log_path = output_path.with_name(output_path.stem + "_errors.log")
+
     with h5py.File(str(output_path), "w") as hd5:
         hd5.attrs.update(metadata.__dict__)
         while True:
@@ -1092,7 +1100,8 @@ def save_worker_results(
                     tag_rotamers,
                 )
             except Exception as e:
-                errors[str(structure_path)] = str(e)
+                with open(error_log_path, "a") as ef:
+                    ef.write(f"{structure_path}: {str(e)}\n")
                 continue
             if isinstance(result, list):
                 for pdb_code, chain_dict in result:
@@ -1107,6 +1116,9 @@ def save_worker_results(
             with progress_counter.get_lock():
                 progress_counter.value += 1
             gc.collect()
+
+    if verbosity > 0 and error_log_path.exists() and error_log_path.stat().st_size > 0:
+        print(f"Errors were logged in: {error_log_path}")
 
 
 def store_result_in_hdf5(
@@ -1237,7 +1249,6 @@ def process_paths(
     """
 
     path_queue = mp.Queue()
-    errors = mp.Manager().dict()
 
     # Load existing dataset keys (merged + partials)
     existing_pdbs = set()
@@ -1262,7 +1273,6 @@ def process_paths(
                 print(f"Warning: could not read {wf}, skipping.")
             continue
 
-    # Filter files to process
     unprocessed_files = [
         p for p in structure_file_paths if p.stem.split(".")[0] not in existing_pdbs
     ]
@@ -1278,7 +1288,7 @@ def process_paths(
         path_queue.put(path)
 
     for _ in range(processes):
-        path_queue.put(None)  # poison pill for each worker
+        path_queue.put(None)
 
     # Metadata for the dataset
     metadata = DatasetMetadata(
@@ -1302,6 +1312,7 @@ def process_paths(
         for i in range(processes)
     ]
     progress_counter = mp.Value("i", 0)
+    error_lock = mp.Lock()
 
     # Spawn worker processes
     workers = [
@@ -1314,7 +1325,7 @@ def process_paths(
                 voxels_per_side,
                 default_atom_filter,
                 None,
-                errors,
+                error_lock,
                 verbosity,
                 codec,
                 voxels_as_gaussian,
@@ -1322,7 +1333,8 @@ def process_paths(
                 tag_rotamers,
                 metadata,
                 gzip_compression,
-                worker_output_paths[i], progress_counter
+                worker_output_paths[i],
+                progress_counter,
             ),
         )
         for i in range(processes)
@@ -1348,10 +1360,9 @@ def process_paths(
 
     merge_worker_hdf5_files(worker_output_paths, output_path, metadata, verbosity)
 
-    if verbosity > 0 and errors:
-        print(f"There were {len(errors)} errors while creating the dataset:")
-        for path, error in errors.items():
-            print(f"\t{path}: {error}")
+    error_log_path = output_path.with_name(output_path.stem + "_errors.log")
+    if verbosity > 0 and error_log_path.exists() and error_log_path.stat().st_size > 0:
+        print(f"Errors were logged in: {error_log_path}")
 
     return output_path
 
