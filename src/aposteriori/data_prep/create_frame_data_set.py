@@ -20,7 +20,7 @@ import ampal
 import ampal.geometry as geometry
 import h5py
 import numpy as np
-import psutil
+import time
 from ampal.amino_acids import polarity_Zimmerman, residue_charge, standard_amino_acids
 from tqdm import tqdm
 
@@ -1046,163 +1046,150 @@ def process_single_path(
             gc.collect()
 
 
-def save_results(
-    result_queue: mp.SimpleQueue,
-    h5_path: Path,
-    total_files: int,
-    complete: mp.Value,
-    frames: mp.Value,
+def save_worker_results(
+    worker_id: int,
+    path_queue: mp.Queue,
+    frame_edge_length: float,
+    voxels_per_side: int,
+    atom_filter_fn: t.Callable[[ampal.Atom], bool],
+    chain_filter_dict: t.Optional[t.Dict[str, t.List[str]]],
+    errors: t.Dict[str, str],
     verbosity: int,
+    codec: Codec,
+    voxels_as_gaussian: bool,
+    voxelise_all_states: bool,
+    tag_rotamers: bool,
     metadata: DatasetMetadata,
     gzip_compression: bool,
-    close_every_n_structures: int = 50,
+    output_path: Path,
+    progress_counter: mp.Value,
+):
+    if verbosity > 1:
+        print(f"[Worker {worker_id}] starting...")
+    with h5py.File(str(output_path), "w") as hd5:
+        hd5.attrs.update(metadata.__dict__)
+        while True:
+            structure_path = path_queue.get()
+            if structure_path is None:
+                break
+            try:
+                if chain_filter_dict:
+                    chain_filter_list = chain_filter_dict[
+                        structure_path.name.split(".")[0].upper().strip("PDB")
+                    ]
+                else:
+                    chain_filter_list = None
+                result = create_frames_from_structure(
+                    structure_path,
+                    frame_edge_length,
+                    voxels_per_side,
+                    atom_filter_fn,
+                    chain_filter_list,
+                    verbosity,
+                    codec,
+                    voxels_as_gaussian,
+                    voxelise_all_states,
+                    tag_rotamers,
+                )
+            except Exception as e:
+                errors[str(structure_path)] = str(e)
+                continue
+            if isinstance(result, list):
+                for pdb_code, chain_dict in result:
+                    store_result_in_hdf5(
+                        hd5, pdb_code, chain_dict, metadata, gzip_compression
+                    )
+            else:
+                pdb_code, chain_dict = result
+                store_result_in_hdf5(
+                    hd5, pdb_code, chain_dict, metadata, gzip_compression
+                )
+            with progress_counter.get_lock():
+                progress_counter.value += 1
+            gc.collect()
+
+
+def store_result_in_hdf5(
+    hd5: h5py.File,
+    pdb_code: str,
+    chain_dict: ChainDict,
+    metadata: DatasetMetadata,
+    gzip_compression: bool,
+):
+    pdb_group = hd5.require_group(pdb_code)
+    for chain_id, res_results in chain_dict.items():
+        chain_group = pdb_group.require_group(chain_id)
+        for res_result in res_results:
+            if res_result.residue_id in chain_group:
+                continue
+            dataset_data = np.array(
+                res_result.data,
+                dtype=np.float16 if metadata.voxels_as_gaussian else np.uint8,
+            )
+            dataset = chain_group.create_dataset(
+                res_result.residue_id,
+                data=dataset_data,
+                dtype=dataset_data.dtype,
+                compression="gzip" if gzip_compression else None,
+                compression_opts=9,
+                fillvalue=0.0 if metadata.voxels_as_gaussian else 0,
+                chunks=metadata.frame_dims,
+            )
+            dataset.attrs.update(
+                {
+                    "label": res_result.label,
+                    "rotamers": res_result.rotamers,
+                    "encoded_residue": res_result.encoded_residue,
+                }
+            )
+
+
+def merge_worker_hdf5_files(
+    worker_files: t.List[Path],
+    output_file: Path,
+    metadata: DatasetMetadata,
+    verbosity: int,
 ):
     """
-    Saves voxelized structures to an HDF5 file while resuming if needed.
+    Merges multiple per-worker HDF5 files into a single output HDF5 dataset.
+
+    This function assumes each worker wrote to its own file independently
+    (e.g., worker_0.hdf5, worker_1.hdf5). It combines these files into a
+    unified output HDF5 file, avoiding duplicate PDB entries and reapplying
+    metadata.
 
     Parameters
     ----------
-    result_queue: mp.SimpleQueue
-        Queue containing the results from the processing function.
-    h5_path: Path
-        Path to the HDF5 file where results will be saved.
-    total_files: int
-        Total number of files to process.
-    complete: mp.Value
-        Number of completed files processed (used for progress tracking).
-    frames: mp.Value
-        The voxelized frames generated from the structures.
-    verbosity: int
+    worker_files : List[Path]
+        List of paths to worker-generated HDF5 files.
+    output_file : Path
+        Path to the final, merged HDF5 output file.
+    metadata : DatasetMetadata
+        Metadata object used to annotate the merged dataset.
+    verbosity : int
         Verbosity level.
-    metadata: DatasetMetadata
-        The metadata of parameters used in the dataset.
-    gzip_compression: bool
-        Whether to use gzip compression for the HDF5 file.
-    close_every_n_structures: int
-
-
-    Returns
-    -------
 
     """
-    lock = mp.Lock()  # Lock for exclusive write access
-    # We count the number of processed files to close the file every n structures
-    processed_since_close = 0
+    with h5py.File(str(output_file), "a") as merged:
+        # Add metadata as top-level attributes in the merged file
+        merged.attrs.update(metadata.__dict__)
+        # Cache all existing group names in a Python set to avoid repeated "in" calls
+        existing_keys = set(merged.keys())
+        for wf in worker_files:
+            with h5py.File(str(wf), "r") as src:
+                # We can list all top-level groups in the worker file once
+                for pdb_code in src.keys():
+                    if pdb_code in existing_keys:
+                        if verbosity > 0:
+                            print(f"Skipping duplicate {pdb_code}")
+                        continue
+                    # Copy group from worker file
+                    src.copy(pdb_code, merged)
+                    # Add the new group name to the set
+                    existing_keys.add(pdb_code)
 
-    # Open the HDF5 file in append mode
-    hd5 = h5py.File(str(h5_path), "a", libver="latest")
-    existing_pdbs = set(hd5.keys())
-
-    with tqdm(total=total_files, desc="Processing Structures") as pbar:
-        while True:
-            result = result_queue.get()
-            if result is None:
-                break
-
-            pdb_code, chain_dict = result
-
-            # If chain_dict is empty, possibly we skipped
-            if not chain_dict:
-                complete.value += 1
-                pbar.update(1)
-                continue
-
-            # Skip duplicate writes
-            if pdb_code in existing_pdbs:
-                if verbosity > 0:
-                    print(f"{pdb_code}: Skipping (already in dataset).")
-                complete.value += 1
-                pbar.update(1)
-                continue
-
-            if verbosity > 0:
-                print(f"{pdb_code}: Storing results...")
-
-            with lock:  # Prevent concurrent writes
-                pdb_group = hd5.require_group(pdb_code)
-
-                for chain_id, res_results in chain_dict.items():
-                    chain_group = pdb_group.require_group(chain_id)
-
-                    for res_result in res_results:
-                        if res_result.residue_id in chain_group:
-                            continue  # Skip if already exists
-                        dataset_data = np.array(
-                            res_result.data,
-                            dtype=np.float16
-                            if metadata.voxels_as_gaussian
-                            else np.uint8,
-                        )
-
-                        # Create dataset & set attributes in one step
-                        dataset = chain_group.create_dataset(
-                            res_result.residue_id,
-                            data=dataset_data,
-                            dtype=np.float16
-                            if metadata.voxels_as_gaussian
-                            else np.uint8,
-                            compression="gzip" if gzip_compression else None,
-                            compression_opts=9,
-                            fillvalue=0.0 if metadata.voxels_as_gaussian else 0,
-                            chunks=metadata.frame_dims,
-                        )
-
-                        dataset.attrs.update(
-                            {
-                                "label": res_result.label,
-                                "rotamers": res_result.rotamers,
-                                "encoded_residue": res_result.encoded_residue,
-                            }
-                        )
-
-                        frames.value += 1
-
-                    # Explicitly close the chain group
-                    del chain_group
-
-                # Explicitly close the PDB group
-                del pdb_group
-
-                # Flush writes to ensure all data is committed
-                hd5.flush()
-
-            existing_pdbs.add(pdb_code)
-            complete.value += 1
-            pbar.update(1)
-
-            # Close and reopen the file every n structures
-            processed_since_close += 1
-            if processed_since_close >= close_every_n_structures:
-                hd5.close()  # close
-                gc.collect()  # Force garbage collection
-                # reopen
-                hd5 = h5py.File(str(h5_path), "a", libver="latest", rdcc_nbytes=1024)
-                existing_pdbs = set(hd5.keys())  # refresh
-                processed_since_close = 0
-
-        print(f"Finished processing files.")
-        # Explicitly close the file to avoid lingering objects)
-        hd5.close()
-
-
-def estimate_result_queue_maxsize(
-    voxels_per_side: int,
-    encoder_length: int,
-    residues_per_protein: int = 1500,
-    bytes_per_voxel: int = 2,  # float16
-    memory_fraction: float = 0.65,
-) -> int:
-    # Estimate size per structure
-    voxels_per_frame = voxels_per_side ** 3
-    bytes_per_frame = voxels_per_frame * encoder_length * bytes_per_voxel
-    bytes_per_structure = bytes_per_frame * residues_per_protein
-
-    # Get available memory
-    available_memory = psutil.virtual_memory().available
-
-    # Estimate max number of structures that fit in 75% of available memory
-    max_structures = int((memory_fraction * available_memory) // bytes_per_structure)
-    return max(1, max_structures)
+            # Optionally delete worker file after merging
+            wf.unlink()
 
 
 def process_paths(
@@ -1234,34 +1221,46 @@ def process_paths(
         the final cube will be `voxels_per_side`^3. This must be a odd, positive integer
         so that the CA atom can be placed at the centre of the frame.
     processes: int
-        Number of processes to used to process structure files.
+        Number of processes used to process structure files.
     verbosity: int
         Level of logging sent to std out.
     codec: object
         Codec object with encoding instructions.
     voxels_as_gaussian: bool
         Whether to encode voxels as gaussians.
+    gzip_compression: bool
+        Whether to compress individual datasets in HDF5.
     voxelise_all_states: bool
-        Whether to voxelise only the first state of the NMR structure (False) or all of them (True).
+        Whether to voxelize all states (for NMR structures).
+    tag_rotamers: bool
+        Whether to tag rotamers using AMPAL.
     """
 
     path_queue = mp.Queue()
-    dynamic_maxsize = estimate_result_queue_maxsize(
-        voxels_per_side, codec.encoder_length
-    )
-
-    result_queue = mp.Queue(maxsize=dynamic_maxsize)
-    complete = mp.Value("i", 0)
-    frames = mp.Value("i", 0)
     errors = mp.Manager().dict()
 
-    # Load existing dataset keys to skip processed files
+    # Load existing dataset keys (merged + partials)
     existing_pdbs = set()
+
+    # Check merged dataset
     if output_path.exists():
         if verbosity > 0:
             print(f"Checking existing dataset at `{output_path}`...")
-        with h5py.File(str(output_path), "r") as hd5:
-            existing_pdbs.update(hd5.keys())
+        try:
+            with h5py.File(str(output_path), "r") as hd5:
+                existing_pdbs.update(hd5.keys())
+        except Exception:
+            pass  # ignore if broken
+
+    # Check temporary per-worker outputs
+    for wf in output_path.parent.glob(f"{output_path.stem}_worker_*.hdf5"):
+        try:
+            with h5py.File(str(wf), "r") as hd5:
+                existing_pdbs.update(hd5.keys())
+        except Exception:
+            if verbosity > 0:
+                print(f"Warning: could not read {wf}, skipping.")
+            continue
 
     # Filter files to process
     unprocessed_files = [
@@ -1297,13 +1296,20 @@ def process_paths(
         voxels_as_gaussian=voxels_as_gaussian,
     )
 
-    # Create worker processes
+    # One output file per worker
+    worker_output_paths = [
+        output_path.parent / f"{output_path.stem}_worker_{i}.hdf5"
+        for i in range(processes)
+    ]
+    progress_counter = mp.Value("i", 0)
+
+    # Spawn worker processes
     workers = [
         mp.Process(
-            target=process_single_path,
+            target=save_worker_results,
             args=(
+                i,
                 path_queue,
-                result_queue,
                 frame_edge_length,
                 voxels_per_side,
                 default_atom_filter,
@@ -1314,46 +1320,35 @@ def process_paths(
                 voxels_as_gaussian,
                 voxelise_all_states,
                 tag_rotamers,
+                metadata,
+                gzip_compression,
+                worker_output_paths[i], progress_counter
             ),
         )
-        for _ in range(processes)
+        for i in range(processes)
     ]
-
-    # Storage process
-    storer = mp.Process(
-        target=save_results,
-        args=(
-            result_queue,
-            output_path,
-            len(unprocessed_files),
-            complete,
-            frames,
-            verbosity,
-            metadata,
-            gzip_compression,
-        ),
-    )
-
-    # Start all processes
-    for proc in workers + [storer]:
+    for proc in workers:
         proc.start()
-    storer.start()
 
-    # Display progress bar
-    with tqdm(total=len(unprocessed_files), desc="Processing Structures") as pbar:
-        last_completed = 0
-        while complete.value < len(unprocessed_files):
-            current_done = complete.value
-            pbar.update(current_done - last_completed)
-            last_completed = current_done
+    # Track global progress
+    with tqdm(total=len(unprocessed_files), desc="Total Progress") as pbar:
+        last_count = 0
+        while True:
+            # read the shared counter
+            current_count = progress_counter.value
+            pbar.update(current_count - last_count)
+            last_count = current_count
+
+            if current_count >= len(unprocessed_files):
+                break
+            time.sleep(0.1)
 
     for proc in workers:
         proc.join()
 
-    result_queue.put(None)
-    storer.join()
+    merge_worker_hdf5_files(worker_output_paths, output_path, metadata, verbosity)
 
-    if (verbosity > 0) and errors:
+    if verbosity > 0 and errors:
         print(f"There were {len(errors)} errors while creating the dataset:")
         for path, error in errors.items():
             print(f"\t{path}: {error}")
