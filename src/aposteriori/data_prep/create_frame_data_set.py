@@ -1207,8 +1207,17 @@ def merge_worker_hdf5_files(
                             continue
                         src_group.copy(chain_id, tgt_group)
         # Post-merge sanity check
+        existing_worker_files = [wf for wf in worker_files if wf.exists()]
+        if not existing_worker_files:
+            raise RuntimeError(
+                "No existing worker files found for merging or size check."
+            )
+
         merged_size = output_file.stat().st_size
-        max_worker_size = max((wf.stat().st_size for wf in worker_files), default=0)
+        max_worker_size = max(
+            (wf.stat().st_size for wf in existing_worker_files), default=0
+        )
+
         if merged_size <= (0.8 * max_worker_size):
             raise RuntimeError(
                 f"[FATAL] Merged file `{output_file}` is suspiciously small "
@@ -1216,8 +1225,8 @@ def merge_worker_hdf5_files(
                 f"({max_worker_size} bytes). Check for silent failures or skipped content."
             )
 
-        # Only remove worker files if sanity check passed
-        for wf in worker_files:
+        # Only remove files if they exist
+        for wf in existing_worker_files:
             wf.unlink()
 
 
