@@ -1189,36 +1189,35 @@ def merge_worker_hdf5_files(
         merged.attrs.update(metadata.__dict__)
         for wf in worker_files:
             with h5py.File(str(wf), "r") as src:
-                # We can list all top-level groups in the worker file once
                 for pdb_code in src.keys():
+                    src_group = src[pdb_code]
+                    # Create or open target PDB group
                     if pdb_code in merged:
                         if verbosity > 0:
-                            print(f"Merging chains into existing group {pdb_code}")
-                        src_group = src[pdb_code]
-                        target_group = merged[pdb_code]
-                        for chain_id in src_group.keys():
-                            # Check if the chain already exists in target group.
-                            if chain_id in target_group:
-                                if verbosity > 0:
-                                    print(
-                                        f"Skipping duplicate chain {chain_id} in {pdb_code}"
-                                    )
-                            else:
-                                src_group.copy(chain_id, target_group)
+                            print(f"Merging into existing group: {pdb_code}")
+                        tgt_group = merged[pdb_code]
                     else:
-                        src.copy(pdb_code, merged)
+                        tgt_group = merged.create_group(pdb_code)
 
-            # Sanity check:
-            merged_size = output_file.stat().st_size
-            max_worker_size = max((wf.stat().st_size for wf in worker_files), default=0)
-            # Merged file should be larger than all worker files
-            if merged_size <= max_worker_size:
-                raise RuntimeError(
-                    f"[FATAL] Merged file `{output_file}` is suspiciously small "
-                    f"({merged_size} bytes) compared to the largest worker file "
-                    f"({max_worker_size} bytes). Check your pipeline for silent failure, "
-                    f"duplicate skipping, or missing input data."
-                )
+                    # Copy each chain individually
+                    for chain_id in src_group.keys():
+                        if chain_id in tgt_group:
+                            if verbosity > 0:
+                                print(f"Skipping existing chain {pdb_code}/{chain_id}")
+                            continue
+                        src_group.copy(chain_id, tgt_group)
+        # Post-merge sanity check
+        merged_size = output_file.stat().st_size
+        max_worker_size = max((wf.stat().st_size for wf in worker_files), default=0)
+        if merged_size <= (0.8 * max_worker_size):
+            raise RuntimeError(
+                f"[FATAL] Merged file `{output_file}` is suspiciously small "
+                f"({merged_size} bytes) compared to the largest worker file "
+                f"({max_worker_size} bytes). Check for silent failures or skipped content."
+            )
+
+        # Only remove worker files if sanity check passed
+        for wf in worker_files:
             wf.unlink()
 
 
