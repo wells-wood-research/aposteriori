@@ -1068,7 +1068,9 @@ def save_worker_results(
     if verbosity > 1:
         print(f"[Worker {worker_id}] starting...")
 
-    error_log_path = output_path.with_name(f"{output_path.stem}_worker_{worker_id}_errors.log")
+    error_log_path = output_path.with_name(
+        f"{output_path.stem}_worker_{worker_id}_errors.log"
+    )
 
     with h5py.File(str(output_path), "w") as hd5:
         hd5.attrs.update(metadata.__dict__)
@@ -1185,22 +1187,38 @@ def merge_worker_hdf5_files(
     with h5py.File(str(output_file), "a") as merged:
         # Add metadata as top-level attributes in the merged file
         merged.attrs.update(metadata.__dict__)
-        # Cache all existing group names in a Python set to avoid repeated "in" calls
-        existing_keys = set(merged.keys())
         for wf in worker_files:
             with h5py.File(str(wf), "r") as src:
                 # We can list all top-level groups in the worker file once
                 for pdb_code in src.keys():
-                    if pdb_code in existing_keys:
+                    if pdb_code in merged:
                         if verbosity > 0:
-                            print(f"Skipping duplicate {pdb_code}")
-                        continue
-                    # Copy group from worker file
-                    src.copy(pdb_code, merged)
-                    # Add the new group name to the set
-                    existing_keys.add(pdb_code)
+                            print(f"Merging chains into existing group {pdb_code}")
+                        src_group = src[pdb_code]
+                        target_group = merged[pdb_code]
+                        for chain_id in src_group.keys():
+                            # Check if the chain already exists in target group.
+                            if chain_id in target_group:
+                                if verbosity > 0:
+                                    print(
+                                        f"Skipping duplicate chain {chain_id} in {pdb_code}"
+                                    )
+                            else:
+                                src_group.copy(chain_id, target_group)
+                    else:
+                        src.copy(pdb_code, merged)
 
-            # Optionally delete worker file after merging
+            # Sanity check:
+            merged_size = output_file.stat().st_size
+            max_worker_size = max((wf.stat().st_size for wf in worker_files), default=0)
+            # Merged file should be larger than all worker files
+            if merged_size <= max_worker_size:
+                raise RuntimeError(
+                    f"[FATAL] Merged file `{output_file}` is suspiciously small "
+                    f"({merged_size} bytes) compared to the largest worker file "
+                    f"({max_worker_size} bytes). Check your pipeline for silent failure, "
+                    f"duplicate skipping, or missing input data."
+                )
             wf.unlink()
 
 
@@ -1362,7 +1380,9 @@ def process_paths(
     error_log_path = output_path.with_name(f"{output_path.stem}_errors.log")
     with open(error_log_path, "w") as merged_log:
         for i in range(processes):
-            worker_log = output_path.parent / f"{output_path.stem}_worker_{i}_errors.log"
+            worker_log = (
+                output_path.parent / f"{output_path.stem}_worker_{i}_errors.log"
+            )
             if worker_log.exists():
                 merged_log.write(worker_log.read_text())
                 worker_log.unlink()
