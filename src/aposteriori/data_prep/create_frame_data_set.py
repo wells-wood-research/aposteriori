@@ -996,7 +996,6 @@ def process_single_path(
     voxels_per_side: int,
     atom_filter_fn: t.Callable[[ampal.Atom], bool],
     chain_filter_dict: t.Optional[t.Dict[str, t.List[str]]],
-    errors: t.Dict[str, str],
     verbosity: int,
     codec: object,
     voxels_as_gaussian: bool,
@@ -1036,9 +1035,7 @@ def process_single_path(
             )
         except Exception as e:
             result = str(e)
-        if isinstance(result, str):
-            errors[str(structure_path)] = result
-        elif isinstance(result, list):
+        if isinstance(result, list):
             for curr_res in result:
                 result_queue.put(curr_res)
                 del curr_res
@@ -1058,7 +1055,6 @@ def save_worker_results(
     voxels_per_side: int,
     atom_filter_fn: t.Callable[[ampal.Atom], bool],
     chain_filter_dict: t.Optional[t.Dict[str, t.List[str]]],
-    errors: t.Dict[str, str],
     verbosity: int,
     codec: Codec,
     voxels_as_gaussian: bool,
@@ -1072,7 +1068,7 @@ def save_worker_results(
     if verbosity > 1:
         print(f"[Worker {worker_id}] starting...")
 
-    error_log_path = output_path.with_name(output_path.stem + "_errors.log")
+    error_log_path = output_path.with_name(f"{output_path.stem}_worker_{worker_id}_errors.log")
 
     with h5py.File(str(output_path), "w") as hd5:
         hd5.attrs.update(metadata.__dict__)
@@ -1100,8 +1096,12 @@ def save_worker_results(
                     tag_rotamers,
                 )
             except Exception as e:
+                # Log the error
                 with open(error_log_path, "a") as ef:
                     ef.write(f"{structure_path}: {str(e)}\n")
+                # Advance the progress counter
+                with progress_counter.get_lock():
+                    progress_counter.value += 1
                 continue
             if isinstance(result, list):
                 for pdb_code, chain_dict in result:
@@ -1312,7 +1312,6 @@ def process_paths(
         for i in range(processes)
     ]
     progress_counter = mp.Value("i", 0)
-    error_lock = mp.Lock()
 
     # Spawn worker processes
     workers = [
@@ -1325,7 +1324,6 @@ def process_paths(
                 voxels_per_side,
                 default_atom_filter,
                 None,
-                error_lock,
                 verbosity,
                 codec,
                 voxels_as_gaussian,
@@ -1346,7 +1344,7 @@ def process_paths(
     with tqdm(total=len(unprocessed_files), desc="Total Progress") as pbar:
         last_count = 0
         while True:
-            # read the shared counter
+            # Read the shared counter
             current_count = progress_counter.value
             pbar.update(current_count - last_count)
             last_count = current_count
@@ -1358,9 +1356,17 @@ def process_paths(
     for proc in workers:
         proc.join()
 
+    # Merge HDF5 files from each worker into a single output file
     merge_worker_hdf5_files(worker_output_paths, output_path, metadata, verbosity)
+    # Merge error logs from each worker into a single error log file
+    error_log_path = output_path.with_name(f"{output_path.stem}_errors.log")
+    with open(error_log_path, "w") as merged_log:
+        for i in range(processes):
+            worker_log = output_path.parent / f"{output_path.stem}_worker_{i}_errors.log"
+            if worker_log.exists():
+                merged_log.write(worker_log.read_text())
+                worker_log.unlink()
 
-    error_log_path = output_path.with_name(output_path.stem + "_errors.log")
     if verbosity > 0 and error_log_path.exists() and error_log_path.stat().st_size > 0:
         print(f"Errors were logged in: {error_log_path}")
 
