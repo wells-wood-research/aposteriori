@@ -1161,7 +1161,7 @@ def store_result_in_hdf5(
 def merge_worker_hdf5_files(
     worker_files: t.List[Path],
     output_file: Path,
-    metadata: DatasetMetadata,
+    metadata: t.Optional[DatasetMetadata],
     verbosity: int,
 ):
     """
@@ -1178,12 +1178,28 @@ def merge_worker_hdf5_files(
         List of paths to worker-generated HDF5 files.
     output_file : Path
         Path to the final, merged HDF5 output file.
-    metadata : DatasetMetadata
+    metadata : t.Optional[DatasetMetadata]
         Metadata object used to annotate the merged dataset.
     verbosity : int
         Verbosity level.
 
     """
+    if not worker_files:
+        raise RuntimeError("No worker files provided for merging.")
+
+    # Infer metadata if not provided
+    if metadata is None:
+        for wf in worker_files:
+            try:
+                with h5py.File(str(wf), "r") as f:
+                    if f.attrs:
+                        metadata = DatasetMetadata.import_metadata_dict(dict(f.attrs))
+                        break
+            except Exception:
+                continue
+        if metadata is None:
+            raise ValueError("Could not infer metadata from worker files. We suggest you re-run the command or open an issue on GitHub.")
+
     with h5py.File(str(output_file), "a") as merged:
         # Add metadata as top-level attributes in the merged file
         merged.attrs.update(metadata.__dict__)
@@ -1208,11 +1224,6 @@ def merge_worker_hdf5_files(
                         src_group.copy(chain_id, tgt_group)
         # Post-merge sanity check
         existing_worker_files = [wf for wf in worker_files if wf.exists()]
-        if not existing_worker_files:
-            raise RuntimeError(
-                "No existing worker files found for merging or size check."
-            )
-
         merged_size = output_file.stat().st_size
         max_worker_size = max(
             (wf.stat().st_size for wf in existing_worker_files), default=0
@@ -1274,10 +1285,21 @@ def process_paths(
         Whether to tag rotamers using AMPAL.
     """
 
-    path_queue = mp.Queue()
+    # Check if process has failed in the previous run and recover
+    recovered_path = output_path.parent / f"{output_path.stem}_recovered.hdf5"
+    prior_partials = list(output_path.parent.glob(f"{output_path.stem}_worker_*.hdf5"))
+    if prior_partials:
+        merge_worker_hdf5_files(prior_partials, recovered_path, metadata=None, verbosity=verbosity)
+        for p in prior_partials:
+            p.unlink()
 
-    # Load existing dataset keys (merged + partials)
+    # Use recovered file to identify already-processed PDBs
     existing_pdbs = set()
+    if recovered_path.exists():
+        with h5py.File(str(recovered_path), "r") as hd5:
+            existing_pdbs.update(hd5.keys())
+
+    path_queue = mp.Queue()
 
     # Check merged dataset
     if output_path.exists():
@@ -1382,9 +1404,14 @@ def process_paths(
     for proc in workers:
         proc.join()
 
-    # Merge HDF5 files from each worker into a single output file
-    merge_worker_hdf5_files(worker_output_paths, output_path, metadata, verbosity)
-    # Merge error logs from each worker into a single error log file
+    # Merge all new worker files + recovered file into final dataset
+    new_partials = list(output_path.parent.glob(f"{output_path.stem}_worker_*.hdf5"))
+    if recovered_path.exists():
+        new_partials.append(recovered_path)
+
+    merge_worker_hdf5_files(new_partials, output_path, metadata, verbosity)
+
+    # Merge all worker logs into a single error log
     error_log_path = output_path.with_name(f"{output_path.stem}_errors.log")
     with open(error_log_path, "w") as merged_log:
         for i in range(processes):
