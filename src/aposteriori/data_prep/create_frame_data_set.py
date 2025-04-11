@@ -74,10 +74,13 @@ class DatasetMetadata:
 
 StrOrPath = t.Union[str, Path]
 ChainDict = t.Dict[str, t.List[ResidueResult]]
-# }}}
 
 
-# {{{ Residue Frame Creation
+# ------------------------------------------------------------------------------
+# --------------------------- Residue Frame Creation ---------------------------
+# ------------------------------------------------------------------------------
+
+
 class Codec:
     def __init__(self, atomic_labels: t.List[str]):
         self.atomic_labels = atomic_labels
@@ -763,18 +766,90 @@ def create_residue_frame(
     return frame
 
 
+# ------------------------------------------------------------------------------
+# ---------------------------- Immediate Storage -------------------------------
+# ------------------------------------------------------------------------------
+
+
+def store_single_residue_in_hdf5(
+    hd5: h5py.File,
+    pdb_code: str,
+    chain_id: str,
+    residue_id: str,
+    label: str,
+    rotamers: str,
+    encoded_residue: np.ndarray,
+    data: np.ndarray,
+    metadata: DatasetMetadata,
+    gzip_compression: bool,
+):
+    """
+    Writes a single residue's 4D data to HDF5 and frees memory immediately.
+
+    Parameters
+    ----------
+    hd5
+    pdb_code
+    chain_id
+    residue_id
+    label
+    rotamers
+    encoded_residue
+    data
+    metadata
+    gzip_compression
+
+    Returns
+    -------
+
+    """
+    pdb_group = hd5.require_group(pdb_code)
+    chain_group = pdb_group.require_group(chain_id)
+    if residue_id in chain_group:
+        return
+
+    dataset_data = np.array(
+        data,
+        dtype=np.float16 if metadata.voxels_as_gaussian else np.uint8,
+    )
+    dataset = chain_group.create_dataset(
+        residue_id,
+        data=dataset_data,
+        dtype=dataset_data.dtype,
+        compression="gzip" if gzip_compression else None,
+        compression_opts=9,
+        fillvalue=0.0 if metadata.voxels_as_gaussian else 0,
+        chunks=(10, 10, 10, dataset_data.shape[-1]),
+    )
+    dataset.attrs.update(
+        {
+            "label": label,
+            "rotamers": rotamers,
+            "encoded_residue": encoded_residue,
+        }
+    )
+    del dataset_data
+
+
+# ------------------------------------------------------------------------------
+# ------------------------- Voxelise & Save on the Fly -------------------------
+# ------------------------------------------------------------------------------
+
+
 def voxelise_assembly(
     assembly,
     atom_filter_fn,
     name,
     chain_filter_list,
     verbosity,
-    chain_dict,
     frame_edge_length,
     voxels_per_side,
     codec,
     voxels_as_gaussian,
     tag_rotamers,
+    hd5,
+    metadata,
+    gzip_compression,
 ):
     if tag_rotamers:
         if isinstance(assembly, ampal.AmpalContainer):
@@ -794,13 +869,17 @@ def voxelise_assembly(
 
     # Filters atoms not related to assembly:
     total_atoms = len(list(assembly.get_atoms()))
+    # Filter atoms
     for atom in assembly.get_atoms():
         if not atom_filter_fn(atom):
             del atom.parent.atoms[atom.res_label]
             del atom
+    # If CB is in your atomic labels, encode them
     if "CB" in codec.atomic_labels:
         for chain in assembly:
             if not isinstance(chain, ampal.Polypeptide):
+                continue
+            if chain_filter_list and chain.id.upper() not in chain_filter_list:
                 continue
             for residue in chain:
                 encode_cb_prevox(residue)
@@ -809,64 +888,65 @@ def voxelise_assembly(
         print(
             f"{name}: Filtered {total_atoms - remaining_atoms} of {total_atoms} atoms."
         )
+
+    # Iterate chains
     for chain in assembly:
-        if chain_filter_list:
-            if chain.id.upper() not in chain_filter_list:
-                if verbosity > 0:
-                    print(
-                        f"{name}:\tIgnoring chain {chain.id}, not in Pieces filter "
-                        f"file."
-                    )
-                continue
+        if chain_filter_list and (chain.id.upper() not in chain_filter_list):
+            if verbosity > 0:
+                print(f"{name}:\tIgnoring chain {chain.id}, not in filter list.")
+            continue
         if not isinstance(chain, ampal.Polypeptide):
             if verbosity > 0:
-                print(f"{name}:\tIgnoring non-polypeptide chain ({chain.id}).")
+                print(f"{name}:\tIgnoring non-polypeptide chain {chain.id}.")
             continue
+
         if verbosity > 0:
             print(f"{name}:\tProcessing chain {chain.id}...")
-        chain_dict[chain.id] = []
-        # Loop through each residue, voxels:
-        for residue in chain:
-            if isinstance(residue, ampal.Residue):
-                # Create voxelised frame:
-                array = create_residue_frame(
-                    residue=residue,
-                    frame_edge_length=frame_edge_length,
-                    voxels_per_side=voxels_per_side,
-                    codec=codec,
-                    voxels_as_gaussian=voxels_as_gaussian,
-                )
-                encoded_residue = encode_residue(residue.mol_code)
-                if "rotamers" in list(residue.tags):
-                    if any(v is None for v in residue.tags["rotamers"]):
-                        rota = "NAN"
-                    else:
-                        rota = "".join(
-                            np.array(residue.tags["rotamers"], dtype=str).tolist()
-                        )
-                else:
-                    rota = "NAN"
-                # Save results:
-                chain_dict[chain.id].append(
-                    ResidueResult(
-                        residue_id=str(residue.id),
-                        label=residue.mol_code,
-                        encoded_residue=encoded_residue,
-                        data=array,
-                        voxels_as_gaussian=voxels_as_gaussian,
-                        rotamers=rota,
-                    )
-                )
-                del array, encoded_residue, rota, residue
-                gc.collect()
 
-                if verbosity > 1:
-                    print(f"{name}:\t\tAdded residue {chain.id}:{residue.id}.")
+        for residue in chain:
+            if not isinstance(residue, ampal.Residue):
+                continue
+
+            # Create the 4D voxel frame:
+            array = create_residue_frame(
+                residue=residue,
+                frame_edge_length=frame_edge_length,
+                voxels_per_side=voxels_per_side,
+                codec=codec,
+                voxels_as_gaussian=voxels_as_gaussian,
+            )
+            encoded_res = encode_residue(residue.mol_code)
+            if "rotamers" in residue.tags:
+                rots = residue.tags["rotamers"]
+                if any(v is None for v in rots):
+                    rota = "NAN"
+                else:
+                    rota = "".join(np.array(rots, dtype=str).tolist())
+            else:
+                rota = "NAN"
+            # Immediately store
+            store_single_residue_in_hdf5(
+                hd5=hd5,
+                pdb_code=name,
+                chain_id=chain.id,
+                residue_id=str(residue.id),
+                label=residue.mol_code,
+                rotamers=rota,
+                encoded_residue=encoded_res,
+                data=array,
+                metadata=metadata,
+                gzip_compression=gzip_compression,
+            )
+            del array, encoded_res, rota
+
+            if verbosity > 1:
+                print(f"{name}:\t\tStored residue {chain.id}:{residue.id}")
+
         if verbosity > 0:
-            print(f"{name}:\tFinished processing chain {chain.id}.")
+            print(f"{name}:\tFinished chain {chain.id}.")
 
     gc.collect()
-    return (name, chain_dict)
+    return name
 
 
 def create_frames_from_structure(
@@ -880,6 +960,9 @@ def create_frames_from_structure(
     voxels_as_gaussian: bool,
     voxelise_all_states: bool,
     tag_rotamers: bool,
+    hd5: h5py.File,
+    metadata: DatasetMetadata,
+    gzip_compression: bool,
 ) -> t.Tuple[str, ChainDict]:
     """Creates residue frames for each residue in the structure.
 
@@ -933,6 +1016,9 @@ def create_frames_from_structure(
                 codec,
                 voxels_as_gaussian,
                 tag_rotamers,
+                hd5,
+                metadata,
+                gzip_compression,
             )
 
             result.append(curr_result)
@@ -949,7 +1035,6 @@ def create_frames_from_structure(
             name,
             chain_filter_list,
             verbosity,
-            chain_dict,
             frame_edge_length,
             voxels_per_side,
             codec,
@@ -958,10 +1043,9 @@ def create_frames_from_structure(
         )
     # Collect Garbage
     del assembly
-    del chain_dict
     gc.collect()
 
-    return result
+    return ",".join(result)
 
 
 # }}}
@@ -1068,23 +1152,26 @@ def save_worker_results(
     if verbosity > 1:
         print(f"[Worker {worker_id}] starting...")
 
-    error_log_path = output_path.with_name(
-        f"{output_path.stem}_worker_{worker_id}_errors.log"
-    )
+    error_log_path = output_path.with_name(f"{output_path.stem}_worker_{worker_id}_errors.log")
 
-    with h5py.File(str(output_path), "w", rdcc_nbytes=1024*1024) as hd5:  # Stop HDF5 from caching too much data
+    # Open worker HDF5 file:
+    with h5py.File(str(output_path), "w", rdcc_nbytes=1024*1024) as hd5:
         hd5.attrs.update(metadata.__dict__)
+
         while True:
             structure_path = path_queue.get()
             if structure_path is None:
                 break
+
             try:
                 if chain_filter_dict:
-                    chain_filter_list = chain_filter_dict[
-                        structure_path.name.split(".")[0].upper().strip("PDB")
-                    ]
+                    chain_filter_list = chain_filter_dict.get(
+                        structure_path.name.split(".")[0].upper().strip("PDB"), None
+                    )
                 else:
                     chain_filter_list = None
+
+                # We store everything on the fly:
                 result = create_frames_from_structure(
                     structure_path,
                     frame_edge_length,
@@ -1096,7 +1183,11 @@ def save_worker_results(
                     voxels_as_gaussian,
                     voxelise_all_states,
                     tag_rotamers,
+                    hd5,
+                    metadata,
+                    gzip_compression
                 )
+
             except Exception as e:
                 # Log the error
                 with open(error_log_path, "a") as ef:
@@ -1105,22 +1196,8 @@ def save_worker_results(
                 with progress_counter.get_lock():
                     progress_counter.value += 1
                 continue
-            if isinstance(result, list):
-                for pdb_code, chain_dict in result:
-                    store_result_in_hdf5(
-                        hd5, pdb_code, chain_dict, metadata, gzip_compression
-                    )
-                    hd5.flush()
-                    del chain_dict
-                    gc.collect()
-            else:
-                pdb_code, chain_dict = result
-                store_result_in_hdf5(
-                    hd5, pdb_code, chain_dict, metadata, gzip_compression
-                )
-                hd5.flush()
-                del chain_dict
-                gc.collect()
+
+            hd5.flush()
             with progress_counter.get_lock():
                 progress_counter.value += 1
             gc.collect()
@@ -1153,7 +1230,12 @@ def store_result_in_hdf5(
                 compression="gzip" if gzip_compression else None,
                 compression_opts=9,
                 fillvalue=0.0 if metadata.voxels_as_gaussian else 0,
-                chunks=(10, 10, 10, dataset_data.shape[-1]), # Add to avoid memory issues
+                chunks=(
+                    10,
+                    10,
+                    10,
+                    dataset_data.shape[-1],
+                ),  # Add to avoid memory issues
             )
             dataset.attrs.update(
                 {
@@ -1206,7 +1288,9 @@ def merge_worker_hdf5_files(
             except Exception:
                 continue
         if metadata is None:
-            raise ValueError("Could not infer metadata from worker files. We suggest you re-run the command or open an issue on GitHub.")
+            raise ValueError(
+                "Could not infer metadata from worker files. We suggest you re-run the command or open an issue on GitHub."
+            )
 
     with h5py.File(str(output_file), "a") as merged:
         # Add metadata as top-level attributes in the merged file
@@ -1297,7 +1381,9 @@ def process_paths(
     recovered_path = output_path.parent / f"{output_path.stem}_recovered.hdf5"
     prior_partials = list(output_path.parent.glob(f"{output_path.stem}_worker_*.hdf5"))
     if prior_partials:
-        merge_worker_hdf5_files(prior_partials, recovered_path, metadata=None, verbosity=verbosity)
+        merge_worker_hdf5_files(
+            prior_partials, recovered_path, metadata=None, verbosity=verbosity
+        )
         for p in prior_partials:
             if p.exists():
                 p.unlink()
