@@ -1040,6 +1040,9 @@ def create_frames_from_structure(
             codec,
             voxels_as_gaussian,
             tag_rotamers,
+            hd5,
+            metadata,
+            gzip_compression,
         )
     # Collect Garbage
     del assembly
@@ -1152,10 +1155,12 @@ def save_worker_results(
     if verbosity > 1:
         print(f"[Worker {worker_id}] starting...")
 
-    error_log_path = output_path.with_name(f"{output_path.stem}_worker_{worker_id}_errors.log")
+    error_log_path = output_path.with_name(
+        f"{output_path.stem}_worker_{worker_id}_errors.log"
+    )
 
     # Open worker HDF5 file:
-    with h5py.File(str(output_path), "w", rdcc_nbytes=1024*1024) as hd5:
+    with h5py.File(str(output_path), "w", rdcc_nbytes=1024 * 1024) as hd5:
         hd5.attrs.update(metadata.__dict__)
 
         while True:
@@ -1185,7 +1190,7 @@ def save_worker_results(
                     tag_rotamers,
                     hd5,
                     metadata,
-                    gzip_compression
+                    gzip_compression,
                 )
 
             except Exception as e:
