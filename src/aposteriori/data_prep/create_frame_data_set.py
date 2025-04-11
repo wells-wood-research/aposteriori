@@ -1299,7 +1299,8 @@ def process_paths(
     if prior_partials:
         merge_worker_hdf5_files(prior_partials, recovered_path, metadata=None, verbosity=verbosity)
         for p in prior_partials:
-            p.unlink()
+            if p.exists():
+                p.unlink()
 
     # Use recovered file to identify already-processed PDBs
     existing_pdbs = set()
