@@ -1072,7 +1072,7 @@ def save_worker_results(
         f"{output_path.stem}_worker_{worker_id}_errors.log"
     )
 
-    with h5py.File(str(output_path), "w") as hd5:
+    with h5py.File(str(output_path), "w", rdcc_nbytes=1024*1024) as hd5:  # Stop HDF5 from caching too much data
         hd5.attrs.update(metadata.__dict__)
         while True:
             structure_path = path_queue.get()
@@ -1110,11 +1110,15 @@ def save_worker_results(
                     store_result_in_hdf5(
                         hd5, pdb_code, chain_dict, metadata, gzip_compression
                     )
+                    del chain_dict
+                    gc.collect()
             else:
                 pdb_code, chain_dict = result
                 store_result_in_hdf5(
                     hd5, pdb_code, chain_dict, metadata, gzip_compression
                 )
+                del chain_dict
+                gc.collect()
             with progress_counter.get_lock():
                 progress_counter.value += 1
             gc.collect()
@@ -1156,6 +1160,7 @@ def store_result_in_hdf5(
                     "encoded_residue": res_result.encoded_residue,
                 }
             )
+            res_result.data = None
 
 
 def merge_worker_hdf5_files(
