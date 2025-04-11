@@ -1110,6 +1110,7 @@ def save_worker_results(
                     store_result_in_hdf5(
                         hd5, pdb_code, chain_dict, metadata, gzip_compression
                     )
+                    hd5.flush()
                     del chain_dict
                     gc.collect()
             else:
@@ -1117,6 +1118,7 @@ def save_worker_results(
                 store_result_in_hdf5(
                     hd5, pdb_code, chain_dict, metadata, gzip_compression
                 )
+                hd5.flush()
                 del chain_dict
                 gc.collect()
             with progress_counter.get_lock():
@@ -1151,7 +1153,7 @@ def store_result_in_hdf5(
                 compression="gzip" if gzip_compression else None,
                 compression_opts=9,
                 fillvalue=0.0 if metadata.voxels_as_gaussian else 0,
-                chunks=metadata.frame_dims,
+                chunks=(10, 10, 10, dataset_data.shape[-1]), # Add to avoid memory issues
             )
             dataset.attrs.update(
                 {
@@ -1161,6 +1163,7 @@ def store_result_in_hdf5(
                 }
             )
             res_result.data = None
+            del dataset_data
 
 
 def merge_worker_hdf5_files(
