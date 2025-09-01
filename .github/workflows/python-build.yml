@@ -15,34 +15,35 @@ jobs:
         python-version: ["3.8", "3.9", "3.10"]
 
     steps:
-    - uses: actions/checkout@v3
+    - uses: actions/checkout@v4
     - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v3
+      uses: actions/setup-python@v4
       with:
         python-version: ${{ matrix.python-version }}
+        cache: 'pip'
+
     - name: Install dependencies
       run: |
         pip install --upgrade pip
-        pip install .
         pip install -r dev-requirements.txt
+        pip install .
+
     - name: Lint with flake8
       run: |
         flake8 . --count --select=E9,F63,F7,F82 --show-source --statistics
         flake8 . --count --exit-zero --max-complexity=10 --max-line-length=127 --statistics
+
     - name: Test with pytest
       run: |
         pytest
-    - name: Build wheel
+
+    - name: Build wheel and source distribution
       run: |
-        pip install wheel
-        python setup.py bdist_wheel
-    - name: Build source distribution
-      run: |
-        python setup.py sdist
+        pip install build
+        python -m build
+
     - name: Upload wheel and source distribution
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       with:
         name: python-package-${{ matrix.python-version }}
-        path: |
-          dist/*.whl
-          dist/*.tar.gz
+        path: dist/*

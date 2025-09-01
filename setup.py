@@ -5,7 +5,7 @@ with open("README.md", "r") as fh:
 
 setup(
     name="aposteriori",
-    version="2.4.0",
+    version="2.5.0",
     author="Wells Wood Research Group",
     author_email="chris.wood@ed.ac.uk",
     description="A library for the voxelization of protein structures for protein design.",
@@ -28,9 +28,5 @@ setup(
             "make-frame-dataset=aposteriori.data_prep.cli:cli",
         ],
     },
-    install_requires=[
-        "ampal==1.5.1",
-        "click==8.1.7",
-        "h5py==3.8.0",
-    ],
+    install_requires=["ampal", "click", "h5py", "tqdm", "numpy<2.0.0"],
 )
